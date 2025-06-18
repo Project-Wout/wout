@@ -1,7 +1,10 @@
 package com.wout.member.util
 
+import com.wout.member.dto.response.ElementScoreDetailResponse
+import com.wout.member.dto.response.WeatherScoreResponse
 import com.wout.member.entity.WeatherPreference
-import com.wout.member.model.ElementWeights
+import com.wout.member.entity.enums.ReactionLevel
+import com.wout.member.model.WeatherGrade
 import org.springframework.stereotype.Component
 import kotlin.math.*
 
@@ -21,241 +24,149 @@ import kotlin.math.*
  */
 
 
-/**
- * 날씨 점수 계산 전용 유틸
- *  - 1단계: 요소별 기본 점수
- *  - 2단계: 개인 가중치(25~75) + √보정
- *  - 3단계: 우선순위 패널티
- *  - 4단계: 가중 평균 → 0~100 cap
- */
 @Component
 class WeatherScoreCalculator {
 
-    /* ---------- 상수 영역 ---------- */
+    /* ---------- (A) 전역·공통 쾌적 구간 ---------- */
+    private val comfy = mapOf(
+        Elem.COLD to 18.0..24.0,     // 온도: Cold·Heat 공통 구간
+        Elem.HEAT to 18.0..24.0,
+        Elem.HUMI to 40.0..65.0,     // 습도(%)
+        Elem.UV   to 0.0..5.0,       // 자외선 지수
+        Elem.AIR  to 0.0..35.0       // 미세먼지(PM10/PM2.5 중 큰 값, ㎍/㎥)
+    )
 
-    private companion object {
-        /* 요소별 최적·임계값 */
-        const val OPTIMAL_TEMPERATURE = 22.0
-        const val TEMPERATURE_SIGMA   = 8.0
-        const val HUMIDITY_OPTIMAL_MIN = 40.0
-        const val HUMIDITY_OPTIMAL_MAX = 60.0
-        const val WIND_OPTIMAL_MIN = 2.0
-        const val WIND_OPTIMAL_MAX = 3.0
+    /* ---------- (B) 극한 구간 고정 감점 ---------- */
+    private val extreme = mapOf(
+        Elem.COLD to listOf((-1_000.0..5.0) to 15),   // 한파
+        Elem.HEAT to listOf(31.0..1_000.0  to 15),    // 폭염
+        Elem.HUMI to listOf(85.0..100.0    to 10),
+        Elem.UV   to listOf(8.0..20.0      to 10),
+        Elem.AIR  to listOf(76.0..1_000.0  to 15)
+    )
 
-        /* 패널티 임계값 */
-        const val HEAT_THRESHOLD = 30.0
-        const val COLD_THRESHOLD = 5.0
-        const val HUMIDITY_THRESHOLD = 75.0
-        const val WIND_THRESHOLD = 6.0
-        const val UV_THRESHOLD   = 8.0
-        const val PM25_THRESHOLD = 75.0
-        const val PM10_THRESHOLD = 150.0
-
-        /* 대기질 가중 */
-        const val PM25_WEIGHT_RATIO = 0.7
-        const val PM10_WEIGHT_RATIO = 0.3
-    }
-
-    /* ---------- Public API ---------- */
-
+    /**
+     * @param temperature 현재 기온(℃)
+     * @param humidity    상대 습도(%)
+     * @param uvIndex     자외선 지수
+     * @param pm25 / pm10 미세먼지(㎍/㎥) – 둘 중 큰 값을 사용
+     * @param pref        사용자 WeatherPreference
+     */
     fun calculateTotalScore(
         temperature: Double,
         humidity: Double,
-        windSpeed: Double,
         uvIndex: Double,
         pm25: Double,
         pm10: Double,
-        preference: WeatherPreference
-    ): WeatherScoreResult {
-
-        /* 1단계: 요소별 기본 점수 */
-        val base = ElementScores(
-            temperature = calculateTemperatureScore(temperature),
-            humidity    = calculateHumidityScore(humidity),
-            wind        = calculateWindScore(windSpeed),
-            uv          = calculateUvScore(uvIndex),
-            airQuality  = calculateAirQualityScore(pm25, pm10)
-        )
-
-        /* 2단계: 개선 가중치 + √보정 */
-        val weighted = applyImprovedWeights(base, preference)
-
-        /* 3단계: 우선순위 패널티 */
-        val penalized = applyPriorityPenalties(
-            weighted, preference,
-            temperature, humidity, windSpeed, uvIndex, pm25, pm10
-        )
-
-        /* 4단계: 가중 평균 */
-        val totalScore = calculateWeightedAverage(penalized, preference)
-
-        return WeatherScoreResult(
-            totalScore = totalScore,
-            grade = getWeatherGrade(totalScore),
-            elementScores  = base,
-            weightedScores = penalized,
-            appliedWeights = preference.calculateImprovedWeights().toDoubleMap()
-        )
-    }
-
-    /* ---------- 1단계: 요소별 기본 점수 ---------- */
-
-    private fun calculateTemperatureScore(t: Double) =
-        (exp(-((t - OPTIMAL_TEMPERATURE).pow(2)) / (2 * TEMPERATURE_SIGMA.pow(2))) * 100)
-            .coerceIn(0.0, 100.0)
-
-    private fun calculateHumidityScore(h: Double): Double = when {
-        h in HUMIDITY_OPTIMAL_MIN..HUMIDITY_OPTIMAL_MAX -> 100.0
-        h in 30.0..HUMIDITY_OPTIMAL_MIN || h in HUMIDITY_OPTIMAL_MAX..70.0 -> {
-            val d = if (h < HUMIDITY_OPTIMAL_MIN) HUMIDITY_OPTIMAL_MIN - h else h - HUMIDITY_OPTIMAL_MAX
-            100 - d * 3
-        }
-        h in 20.0..30.0 || h in 70.0..80.0 -> {
-            val d = if (h < 30) 30 - h else h - 70
-            70 - d * 2
-        }
-        else -> max(0.0, 50 - abs(h - 50) * 2)
-    }.coerceIn(0.0, 100.0)
-
-    private fun calculateWindScore(w: Double): Double = when {
-        w in WIND_OPTIMAL_MIN..WIND_OPTIMAL_MAX -> 100.0
-        w in 1.0..WIND_OPTIMAL_MIN || w in WIND_OPTIMAL_MAX..4.0 -> 85.0
-        w in 0.5..1.0 || w in 4.0..WIND_THRESHOLD -> 70.0
-        w < 0.5 -> 60.0
-        w in WIND_THRESHOLD..10.0 -> 50.0
-        else -> 20.0
-    }
-
-    private fun calculateUvScore(uv: Double): Double = when {
-        uv <= 2 -> 100.0
-        uv <= 5 -> 80.0
-        uv <= 7 -> 60.0
-        uv <= 10 -> 40.0
-        else -> 20.0
-    }
-
-    private fun calculateAirQualityScore(pm25: Double, pm10: Double): Double {
-        val pm25Score = when {
-            pm25 <= 15 -> 100.0
-            pm25 <= 35 -> 80.0
-            pm25 <= PM25_THRESHOLD -> 60.0
-            else -> 30.0
-        }
-        val pm10Score = when {
-            pm10 <= 30 -> 100.0
-            pm10 <= 80 -> 80.0
-            pm10 <= PM10_THRESHOLD -> 60.0
-            else -> 30.0
-        }
-        return (pm25Score * PM25_WEIGHT_RATIO + pm10Score * PM10_WEIGHT_RATIO)
-            .coerceIn(0.0, 100.0)
-    }
-
-    /* ---------- 2단계: 개선 가중치 + √보정 ---------- */
-
-    private fun applyImprovedWeights(
-        base: ElementScores,
         pref: WeatherPreference
-    ): ElementScores {
-        val w: ElementWeights = pref.calculateImprovedWeights()
+    ): WeatherScoreResponse {
 
-        fun adjust(score: Double, weight: Int): Double =
-            (score * sqrt(weight.toDouble() / 50.0)).coerceIn(0.0, 100.0)
+        /* ① 기본점수 = importance × 100 */
+        val base = mapOf(
+            Elem.COLD to pref.importanceCold     * 100,
+            Elem.HEAT to pref.importanceHeat     * 100,
+            Elem.HUMI to pref.importanceHumidity * 100,
+            Elem.UV   to pref.importanceUv       * 100,
+            Elem.AIR  to pref.importanceAir      * 100
+        )
 
-        return ElementScores(
-            temperature = adjust(base.temperature, w.temperature),
-            humidity    = adjust(base.humidity,    w.humidity),
-            wind        = adjust(base.wind,        w.wind),
-            uv          = adjust(base.uv,          w.uv),
-            airQuality  = adjust(base.airQuality,  w.airQuality)
+        /* ② 요소별 편차(거리) 계산 */
+        val deltas = calcDeltas(
+            temperature, humidity, uvIndex, max(pm25, pm10)
+        )
+
+        /* ③ 민감도 계수 (HIGH=1.5, MEDIUM=1.0, LOW=0.5) */
+        val sens = ElementSensitivity.from(pref)
+
+        /* ④ 감점 = delta × 계수 + 극한 패널티 */
+        val penalties = mapOf(
+            Elem.COLD to deltas[Elem.COLD]!! * sens.cold       + extremePenalty(Elem.COLD, temperature),
+            Elem.HEAT to deltas[Elem.HEAT]!! * sens.heat       + extremePenalty(Elem.HEAT, temperature),
+            Elem.HUMI to deltas[Elem.HUMI]!! * sens.humidity   + extremePenalty(Elem.HUMI, humidity),
+            Elem.UV   to deltas[Elem.UV]!!   * sens.uv         + extremePenalty(Elem.UV,   uvIndex),
+            Elem.AIR  to deltas[Elem.AIR]!!  * sens.airQuality + extremePenalty(Elem.AIR,  max(pm25, pm10))
+        )
+
+        /* ⑤ 최종 점수 = max(기본 − 감점, 0) */
+        val final = base.mapValues { (k, v) -> (v - penalties[k]!!).coerceAtLeast(0.0) }
+
+        /* ⑥ 총점 & Grade */
+        val total = final.values.sum().coerceIn(0.0, 100.0)
+        val grade = when (total) {
+            in 90.0..100.0 -> WeatherGrade.PERFECT
+            in 75.0..89.99 -> WeatherGrade.GOOD
+            in 60.0..74.99 -> WeatherGrade.FAIR
+            in 45.0..59.99 -> WeatherGrade.POOR
+            else           -> WeatherGrade.TERRIBLE
+        }
+
+        /* ⑦ DTO 반환 */
+        val elemDto = ElementScoreDetailResponse(
+            cold = final[Elem.COLD]!!.roundToInt(),
+            heat = final[Elem.HEAT]!!.roundToInt(),
+            humidity = final[Elem.HUMI]!!.roundToInt(),
+            uv = final[Elem.UV]!!.roundToInt(),
+            airQuality = final[Elem.AIR]!!.roundToInt()
+        )
+
+        return WeatherScoreResponse(total, grade, elemDto)
+    }
+
+    /* ---------- 내부 헬퍼 ---------- */
+
+    /** ‘쾌적 구간’에서 벗어난 거리(절대값) 계산 */
+    private fun calcDeltas(
+        temp: Double, humi: Double, uv: Double, air: Double
+    ): Map<Elem, Double> {
+
+        /* 온도는 Cold / Heat 두 방향으로 분리 */
+        val coldDelta = if (temp < comfy[Elem.COLD]!!.start)
+            comfy[Elem.COLD]!!.start - temp else 0.0
+
+        val heatDelta = if (temp > comfy[Elem.HEAT]!!.endInclusive)
+            temp - comfy[Elem.HEAT]!!.endInclusive else 0.0
+
+        /* 범위 밖 거리 계산(+0 if in range) */
+        fun delta(v: Double, range: ClosedFloatingPointRange<Double>) =
+            if (v in range) 0.0
+            else abs(if (v < range.start) range.start - v else v - range.endInclusive)
+
+        return mapOf(
+            Elem.COLD to coldDelta,
+            Elem.HEAT to heatDelta,
+            Elem.HUMI to delta(humi, comfy[Elem.HUMI]!!),
+            Elem.UV   to delta(uv,  comfy[Elem.UV]!!),
+            Elem.AIR  to delta(air, comfy[Elem.AIR]!!)
         )
     }
 
-    /* ---------- 3단계: 우선순위 패널티 ---------- */
+    /** 극한 구간 진입 시 고정 감점, 아니면 0 */
+    private fun extremePenalty(e: Elem, value: Double): Int =
+        extreme[e]?.firstOrNull { value in it.first }?.second ?: 0
 
-    private fun applyPriorityPenalties(
-        s: ElementScores,
-        p: WeatherPreference,
-        t: Double, h: Double, w: Double, uv: Double, pm25: Double, pm10: Double
-    ): ElementScores {
-        var sc = s
-        p.getPriorityList().forEach { pr ->
-            val factor = p.getPriorityPenaltyWeight(pr)
-            sc = when (pr) {
-                "heat"  -> if (t >= HEAT_THRESHOLD) sc.copy(temperature = sc.temperature * factor) else sc
-                "cold"  -> if (t <= COLD_THRESHOLD) sc.copy(temperature = sc.temperature * factor) else sc
-                "humidity" -> if (h >= HUMIDITY_THRESHOLD) sc.copy(humidity = sc.humidity * factor) else sc
-                "wind"  -> if (w >= WIND_THRESHOLD) sc.copy(wind = sc.wind * factor) else sc
-                "uv"    -> if (uv >= UV_THRESHOLD)  sc.copy(uv = sc.uv * factor) else sc
-                "pollution" ->
-                    if (pm25 >= PM25_THRESHOLD || pm10 >= PM10_THRESHOLD)
-                        sc.copy(airQuality = sc.airQuality * factor) else sc
-                else -> sc
+    /* ---------- 내부 전용 타입 ---------- */
+
+    /** 계산용 내부 열거 – 외부에 노출되지 않음 */
+    private enum class Elem { COLD, HEAT, HUMI, UV, AIR }
+
+    /** ReactionLevel → 민감도 계수 매핑 */
+    private data class ElementSensitivity(
+        val cold: Double, val heat: Double, val humidity: Double, val uv: Double, val airQuality: Double
+    ) {
+        companion object {
+            fun from(p: WeatherPreference) = ElementSensitivity(
+                cold       = coef(p.reactionCold),
+                heat       = coef(p.reactionHeat),
+                humidity   = coef(p.reactionHumidity),
+                uv         = coef(p.reactionUv),
+                airQuality = coef(p.reactionAir)
+            )
+
+            private fun coef(r: ReactionLevel): Double = when (r) {
+                ReactionLevel.HIGH   -> 1.5
+                ReactionLevel.LOW    -> 0.5
+                else                 -> 1.0          // MEDIUM
             }
         }
-        return sc
-    }
-
-    /* ---------- 4단계: 가중 평균 ---------- */
-
-    private fun calculateWeightedAverage(
-        s: ElementScores,
-        pref: WeatherPreference
-    ): Double {
-        val w = pref.calculateImprovedWeights()
-        val total = (w.temperature + w.humidity + w.wind + w.uv + w.airQuality).toDouble()
-        val sum =
-            s.temperature * w.temperature +
-                    s.humidity    * w.humidity +
-                    s.wind        * w.wind +
-                    s.uv          * w.uv +
-                    s.airQuality  * w.airQuality
-        return (sum / total).coerceIn(0.0, 100.0)
-    }
-
-    /* ---------- 보조 ---------- */
-
-    private fun getWeatherGrade(score: Double): WeatherGrade = when {
-        score >= 90 -> WeatherGrade.PERFECT
-        score >= 70 -> WeatherGrade.GOOD
-        score >= 50 -> WeatherGrade.FAIR
-        score >= 30 -> WeatherGrade.POOR
-        else        -> WeatherGrade.TERRIBLE
     }
 }
-
-/* ===== 데이터 클래스 및 enum ===== */
-
-data class ElementScores(
-    val temperature: Double,
-    val humidity: Double,
-    val wind: Double,
-    val uv: Double,
-    val airQuality: Double
-)
-
-data class WeatherScoreResult(
-    val totalScore: Double,
-    val grade: WeatherGrade,
-    val elementScores: ElementScores,
-    val weightedScores: ElementScores,
-    val appliedWeights: Map<String, Double>
-)
-
-enum class WeatherGrade(val emoji: String, val description: String) {
-    PERFECT("😊", "완벽한 날씨"),
-    GOOD("😌", "좋은 날씨"),
-    FAIR("😐", "보통 날씨"),
-    POOR("😰", "아쉬운 날씨"),
-    TERRIBLE("😵", "힘든 날씨")
-}
-
-/* ===== ElementWeights → Map 변환 헬퍼 ===== */
-
-private fun ElementWeights.toDoubleMap(): Map<String, Double> = mapOf(
-    "temperature" to temperature.toDouble(),
-    "humidity"    to humidity.toDouble(),
-    "wind"        to wind.toDouble(),
-    "uv"          to uv.toDouble(),
-    "airQuality"  to airQuality.toDouble()
-)

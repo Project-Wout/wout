@@ -1,6 +1,7 @@
 package com.wout.member.dto.response
 
-import com.wout.member.util.WeatherGrade
+import com.wout.member.model.WeatherGrade
+
 
 /**
  * packageName    : com.wout.member.dto.response

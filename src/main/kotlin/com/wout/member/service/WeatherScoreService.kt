@@ -50,12 +50,10 @@ class WeatherScoreService(
         latitude: Double,
         longitude: Double
     ): WeatherScoreResponse {
-        validateDeviceId(deviceId)
-        validateCoordinates(latitude, longitude)
 
         val member = findMemberByDeviceId(deviceId)
         val weatherPreference = findWeatherPreferenceByMemberId(member.id)
-        val weatherData = getWeatherDataSafely(latitude, longitude)
+        val weatherData = getWeatherData(latitude, longitude)
 
         return calculateAndBuildResponse(weatherData, weatherPreference, latitude, longitude)
     }
@@ -67,12 +65,10 @@ class WeatherScoreService(
         deviceId: String,
         cityName: String
     ): WeatherScoreResponse {
-        validateDeviceId(deviceId)
-        validateCityName(cityName)
 
         val member = findMemberByDeviceId(deviceId)
         val weatherPreference = findWeatherPreferenceByMemberId(member.id)
-        val weatherData = getWeatherDataSafelyByCity(cityName)
+        val weatherData = getWeatherDataByCity(cityName)
 
         return calculateAndBuildResponse(
             weatherData,
@@ -80,29 +76,6 @@ class WeatherScoreService(
             weatherData.latitude,
             weatherData.longitude
         )
-    }
-
-    // ===== 입력값 검증 메서드들 =====
-
-    private fun validateDeviceId(deviceId: String) {
-        if (deviceId.isBlank()) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
-    }
-
-    private fun validateCoordinates(latitude: Double, longitude: Double) {
-        if (latitude !in -90.0..90.0) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
-        if (longitude !in -180.0..180.0) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
-    }
-
-    private fun validateCityName(cityName: String) {
-        if (cityName.isBlank()) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
     }
 
     // ===== 공통 조회 메서드들 =====
@@ -116,7 +89,7 @@ class WeatherScoreService(
             ?: throw ApiException(SENSITIVITY_PROFILE_NOT_FOUND)
     }
 
-    private fun getWeatherDataSafely(latitude: Double, longitude: Double): WeatherData {
+    private fun getWeatherData(latitude: Double, longitude: Double): WeatherData {
         return try {
             weatherService.getCurrentWeatherData(latitude, longitude)
         } catch (e: Exception) {
@@ -124,7 +97,7 @@ class WeatherScoreService(
         }
     }
 
-    private fun getWeatherDataSafelyByCity(cityName: String): WeatherData {
+    private fun getWeatherDataByCity(cityName: String): WeatherData {
         return try {
             weatherService.getCurrentWeatherDataByCity(cityName)
         } catch (e: Exception) {
@@ -140,7 +113,7 @@ class WeatherScoreService(
         latitude: Double,
         longitude: Double
     ): WeatherScoreResponse {
-        val scoreResult = calculatePersonalizedScoreSafely(weatherData, weatherPreference)
+        val scoreResult = calculatePersonalizedScore(weatherData, weatherPreference)
         val personalizedMessage = weatherMessage.generatePersonalizedMessage(scoreResult, weatherPreference)
 
         return buildWeatherScoreResponse(
@@ -153,7 +126,7 @@ class WeatherScoreService(
         )
     }
 
-    private fun calculatePersonalizedScoreSafely(
+    private fun calculatePersonalizedScore(
         weatherData: WeatherData,
         weatherPreference: WeatherPreference
     ): WeatherScoreResult {
