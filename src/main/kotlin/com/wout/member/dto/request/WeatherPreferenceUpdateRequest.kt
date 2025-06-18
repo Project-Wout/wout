@@ -50,46 +50,6 @@ data class WeatherPreferenceUpdateRequest(
     @field:Max(value = 75, message = "대기질 가중치는 75 이하여야 합니다")
     val airQualityWeight: Int? = null
 ) {
-    /**
-     * 수정할 내용이 있는지 확인
-     */
-    fun hasUpdates(): Boolean {
-        return priorityFirst != null ||
-                prioritySecond != null ||
-                comfortTemperature != null ||
-                skinReaction != null ||
-                humidityReaction != null ||
-                temperatureWeight != null ||
-                humidityWeight != null ||
-                windWeight != null ||
-                uvWeight != null ||
-                airQualityWeight != null
-    }
-
-    /**
-     * 1단계 관련 업데이트가 있는지 확인
-     */
-    fun hasPriorityUpdates(): Boolean {
-        return priorityFirst != null || prioritySecond != null
-    }
-
-    /**
-     * 3-4단계 관련 업데이트가 있는지 확인
-     */
-    fun hasReactionUpdates(): Boolean {
-        return skinReaction != null || humidityReaction != null
-    }
-
-    /**
-     * 5단계 가중치 업데이트가 있는지 확인
-     */
-    fun hasWeightUpdates(): Boolean {
-        return temperatureWeight != null ||
-                humidityWeight != null ||
-                windWeight != null ||
-                uvWeight != null ||
-                airQualityWeight != null
-    }
 
     /**
      * 유효성 검증

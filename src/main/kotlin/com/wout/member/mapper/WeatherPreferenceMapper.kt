@@ -1,7 +1,6 @@
 package com.wout.member.mapper
 
 import com.wout.member.dto.request.WeatherPreferenceSetupRequest
-import com.wout.member.dto.request.WeatherPreferenceUpdateRequest
 import com.wout.member.dto.response.MemberWithPreferenceResponse
 import com.wout.member.dto.response.WeatherPreferenceResponse
 import com.wout.member.entity.Member
@@ -81,32 +80,4 @@ class WeatherPreferenceMapper(
         )
     }
 
-    /**
-     * UpdateRequest로 기존 엔티티 업데이트
-     */
-    fun updateEntity(
-        existing: WeatherPreference,
-        request: WeatherPreferenceUpdateRequest
-    ): WeatherPreference {
-        val newComfortTemp = request.comfortTemperature ?: existing.comfortTemperature
-        val newTempWeight = request.temperatureWeight ?: existing.temperatureWeight
-        val newHumidityWeight = request.humidityWeight ?: existing.humidityWeight
-        val newWindWeight = request.windWeight ?: existing.windWeight
-        val newUvWeight = request.uvWeight ?: existing.uvWeight
-        val newAirQualityWeight = request.airQualityWeight ?: existing.airQualityWeight
-
-        return WeatherPreference.createFromSetup(
-            memberId = existing.memberId,
-            priorityFirst = existing.priorityFirst,
-            prioritySecond = existing.prioritySecond,
-            comfortTemperature = newComfortTemp,
-            skinReaction = existing.skinReaction,
-            humidityReaction = existing.humidityReaction,
-            temperatureWeight = newTempWeight,
-            humidityWeight = newHumidityWeight,
-            windWeight = newWindWeight,
-            uvWeight = newUvWeight,
-            airQualityWeight = newAirQualityWeight
-        )
-    }
 }

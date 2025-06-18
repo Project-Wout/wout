@@ -168,7 +168,6 @@ class MemberService(
         request: WeatherPreferenceUpdateRequest
     ): WeatherPreferenceResponse {
         validateDeviceId(deviceId)
-        validateWeatherPreferenceUpdateRequest(request)
 
         val member = findMemberByDeviceId(deviceId)
         val existingPreference = findWeatherPreferenceByMemberId(member.id)
@@ -246,12 +245,6 @@ class MemberService(
 
     private fun validateWeatherPreferenceSetupRequest(request: WeatherPreferenceSetupRequest) {
         if (!request.isValidPriorities()) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
-    }
-
-    private fun validateWeatherPreferenceUpdateRequest(request: WeatherPreferenceUpdateRequest) {
-        if (!request.hasUpdates()) {
             throw ApiException(INVALID_INPUT_VALUE)
         }
     }
