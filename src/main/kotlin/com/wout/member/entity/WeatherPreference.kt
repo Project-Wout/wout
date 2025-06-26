@@ -226,18 +226,53 @@ class WeatherPreference private constructor(
             h >= 30 -> -0.5
             else    -> -1.0
         }
-        val mult = when (reactionHumidity) {
+        val multiplier = when (reactionHumidity) {
             ReactionLevel.HIGH   -> 1.5
             ReactionLevel.LOW    -> 0.5
             else                 -> 1.0
         }
-        return base * mult
+        return base * multiplier
     }
 
-    /* ---------- 디버그용 출력 ---------- */
-    override fun toString(): String =
-        "WeatherPreference(id=$id, member=$memberId, " +
-                "Rx=[COLD:$reactionCold, HEAT:$reactionHeat, HUMI:$reactionHumidity, " +
-                "UV:$reactionUv, AIR:$reactionAir], Comfort=$comfortTemperature, " +
-                "Imp=${importanceMap().mapValues { (it.value * 100).roundToInt() }})"
+    /* ==================== 민감도 헬퍼 ==================== */
+
+    /** 추위에 HIGH 민감 */
+    fun isColdSensitive() = reactionCold == ReactionLevel.HIGH
+
+    /** 더위에 HIGH 민감 */
+    fun isHeatSensitive() = reactionHeat == ReactionLevel.HIGH
+
+    /** 습도에 HIGH 민감 */
+    fun isHumiditySensitive() = reactionHumidity == ReactionLevel.HIGH
+
+    /**
+     * 다섯 요소 중 하나라도 HIGH가 있으면 ‘고민감’ 사용자로 간주
+     */
+    fun isHighSensitivity(): Boolean =
+        listOf(reactionCold, reactionHeat, reactionHumidity, reactionUv, reactionAir)
+            .any { it == ReactionLevel.HIGH }
+
+    /* ==================== 가중치(%) 계산 ==================== */
+
+    /** UV 중요도(0~100 %) */
+    val uvWeightPercent: Int
+        get() = (importanceUv * 100).roundToInt()
+
+    /** 대기질 중요도(0~100 %) */
+    val airWeightPercent: Int
+        get() = (importanceAir * 100).roundToInt()
+
+    /* ==================== 계수 유틸 ==================== */
+
+    /**
+     * 민감도 레벨을 계수(1.5·1.0·0.5)로 변환
+     *  – HIGH → 1.5, MEDIUM → 1.0, LOW → 0.5
+     */
+    fun reactionCoefficient(level: ReactionLevel): Double = when (level) {
+        ReactionLevel.HIGH -> 1.5
+        ReactionLevel.LOW  -> 0.5
+        else               -> 1.0
+    }
+
+
 }

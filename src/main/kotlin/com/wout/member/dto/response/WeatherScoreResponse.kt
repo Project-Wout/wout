@@ -18,18 +18,11 @@ data class WeatherScoreResponse(
     val totalScore: Int,
     val grade: WeatherGrade,
     val message: String,
-    val elementScores: ElementScoreDetails,
+    val elementScores: ElementScoreDetailResponse,
     val weatherInfo: WeatherInfo,
     val location: LocationInfo
 )
 
-data class ElementScoreDetails(
-    val temperature: Int,
-    val humidity: Int,
-    val wind: Int,
-    val uv: Int,
-    val airQuality: Int
-)
 data class WeatherInfo(
     val temperature: Double,
     val feelsLikeTemperature: Double,

@@ -12,7 +12,7 @@ import com.wout.weather.repository.WeatherDataRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
-import java.util.Locale
+import java.util.*
 
 /**
  * packageName    : com.wout.weather.service
@@ -54,7 +54,7 @@ class WeatherService(
     fun getWeatherByLocation(userLat: Double, userLon: Double): WeatherResponse {
         validateCoordinates(userLat, userLon)
         val nearestCity = findNearestCity(userLat, userLon)
-        val weatherData = findLatestWeatherDataSafely(nearestCity.cityName)
+        val weatherData = findLatestWeatherData(nearestCity.cityName)
         return buildWeatherResponse(weatherData)
     }
 
@@ -63,7 +63,7 @@ class WeatherService(
      */
     fun getWeatherByCity(cityName: String): WeatherResponse {
         validateCityName(cityName)
-        val weatherData = findWeatherDataByCitySafely(cityName)
+        val weatherData = findWeatherDataByCity(cityName)
         return buildWeatherResponse(weatherData)
     }
 
@@ -80,7 +80,7 @@ class WeatherService(
      */
     fun getWeatherHistory(cityName: String): List<WeatherResponse> {
         validateCityName(cityName)
-        val weatherHistoryList = findWeatherHistorySafely(cityName)
+        val weatherHistoryList = findWeatherHistory(cityName)
         return buildWeatherHistoryResponse(weatherHistoryList)
     }
 
@@ -104,7 +104,7 @@ class WeatherService(
     fun getCurrentWeatherData(userLat: Double, userLon: Double): WeatherData {
         validateCoordinates(userLat, userLon)
         val nearestCity = findNearestCity(userLat, userLon)
-        return findLatestWeatherDataSafely(nearestCity.cityName)
+        return findLatestWeatherData(nearestCity.cityName)
     }
 
     /**
@@ -112,7 +112,7 @@ class WeatherService(
      */
     fun getCurrentWeatherDataByCity(cityName: String): WeatherData {
         validateCityName(cityName)
-        return findWeatherDataByCitySafely(cityName)
+        return findWeatherDataByCity(cityName)
     }
 
     // ===== 입력값 검증 메서드들 =====
@@ -138,19 +138,19 @@ class WeatherService(
         return KoreanMajorCity.findNearestCity(userLat, userLon)
     }
 
-    private fun findLatestWeatherDataSafely(cityName: String): WeatherData {
+    private fun findLatestWeatherData(cityName: String): WeatherData {
         val since = LocalDateTime.now().minusHours(WEATHER_CACHE_HOURS)
         return weatherRepository.findLatestByCityName(cityName, since)
             ?: weatherRepository.findLatestByCityName(cityName)
             ?: throw ApiException(WEATHER_DATA_NOT_FOUND)
     }
 
-    private fun findWeatherDataByCitySafely(cityName: String): WeatherData {
+    private fun findWeatherDataByCity(cityName: String): WeatherData {
         return weatherRepository.findLatestByCityName(cityName)
             ?: throw ApiException(WEATHER_DATA_NOT_FOUND)
     }
 
-    private fun findWeatherHistorySafely(cityName: String): List<WeatherData> {
+    private fun findWeatherHistory(cityName: String): List<WeatherData> {
         val now = LocalDateTime.now()
         val yesterday = now.minusHours(WEATHER_HISTORY_HOURS)
         return weatherRepository.findByCityNameAndDateRange(cityName, yesterday, now)

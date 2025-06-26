@@ -81,61 +81,6 @@ enum class WeatherCondition(
         }
 
         /**
-         * 조건 결정 과정 상세 정보 반환 (디버깅 및 테스트용)
-         *
-         * @param temperature 현재 기온
-         * @param preferences 사용자 날씨 선호도
-         * @param weatherData 날씨 데이터
-         * @return 조건 결정에 사용된 모든 정보
-         */
-        fun validateConditionLogic(
-            temperature: Double,
-            preferences: WeatherPreference,
-            weatherData: WeatherData
-        ): Map<String, Any> {
-            return mapOf(
-                "temperature" to temperature,
-                "isColdSensitive" to preferences.isColdSensitive(),
-                "isHeatSensitive" to preferences.isHeatSensitive(),
-                "isHumiditySensitive" to preferences.isHumiditySensitive(),
-                "humidity" to weatherData.humidity,
-                "determinedCondition" to determineCondition(temperature, preferences, weatherData),
-                "appliedRule" to getAppliedRule(temperature, preferences, weatherData),
-                "temperatureRange" to getTemperatureRangeForCondition(
-                    determineCondition(temperature, preferences, weatherData)
-                )
-            )
-        }
-
-        /**
-         * 적용된 규칙 설명 반환 (디버깅용)
-         *
-         * @param temperature 현재 기온
-         * @param preferences 사용자 날씨 선호도
-         * @param weatherData 날씨 데이터
-         * @return 적용된 규칙의 상세 설명
-         */
-        private fun getAppliedRule(
-            temperature: Double,
-            preferences: WeatherPreference,
-            weatherData: WeatherData
-        ): String {
-            return when {
-                temperature <= 0 -> "극한 추위: 0도 이하"
-                temperature >= 35 -> "극한 더위: 35도 이상"
-                preferences.isColdSensitive() && temperature in 1.0..15.0 ->
-                    "추위 민감형: 1-15도 구간, 추위 민감 사용자"
-                preferences.isHeatSensitive() && temperature in 28.0..34.9 ->
-                    "더위 민감형: 28-34도 구간, 더위 민감 사용자"
-                preferences.isHumiditySensitive() &&
-                        weatherData.humidity >= 85 &&
-                        temperature in 16.0..27.9 ->
-                    "습도 민감형: 16-27도 구간, 습도 ${weatherData.humidity}%, 습도 민감 사용자"
-                else -> "완벽한 날씨: 기본 조건 적용"
-            }
-        }
-
-        /**
          * 날씨 조건별 우선순위 정렬
          *
          * @param conditions 정렬할 날씨 조건 리스트

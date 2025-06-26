@@ -1,7 +1,9 @@
 package com.wout.member.util
 
 import com.wout.member.entity.WeatherPreference
+import com.wout.member.model.WeatherScore
 import org.springframework.stereotype.Component
+import kotlin.math.roundToInt
 
 /**
  * packageName    : com.wout.member.util
@@ -50,27 +52,21 @@ class WeatherMessage {
     /* ===================== 퍼블릭 API ===================== */
 
     /**
-     * 1. 점수 + 개인 특성 기반 한 줄 메시지
+     * 1. 점수 기반 한 줄 메시지 (개인 특성 제거됨)
      */
-    fun generatePersonalizedMessage(scoreResult: WeatherScoreResult, pref: WeatherPreference): String {
-        val score = scoreResult.totalScore.toInt()
-        val grade = scoreResult.grade
+    fun generatePersonalizedMessage(score: WeatherScore, preference: WeatherPreference): String {
+        val totalScore = score.total.roundToInt()
+        val grade = score.grade
 
         // ① 기본 part
-        val base = "${grade.emoji} $score 점 · ${grade.description}"
+        val base = "${grade.emoji} $totalScore 점 · ${grade.description}"
 
-        // ② 개인 특성 part (가장 강한 1개만 표시)
-        val trait = extractPersonalTrait(pref)
+        // ② 결론 part
+        val conclusion = bucketMessage(totalScore)
 
-        // ③ 결론 part
-        val conclusion = bucketMessage(score)
-
-        return buildString {
-            append(base).append(" ")
-            if (trait != null) append(trait).append(" ")
-            append(conclusion)
-        }.trim()
+        return "$base $conclusion".trim()
     }
+
 
     /**
      * 2. 최근 학습 방향 메시지 (평균 조정량 전달받음)
@@ -92,10 +88,6 @@ class WeatherMessage {
     }
 
     /* ===================== 헬퍼 ===================== */
-
-    private fun extractPersonalTrait(pref: WeatherPreference): String? =
-        pref.getPriorityList().firstNotNullOfOrNull { PERSONAL_TRAIT_MESSAGES[it] }
-
     private fun bucketMessage(score: Int): String =
         SCORE_BUCKETS.firstOrNull { score in it.first }?.second ?: "날씨 데이터를 확인할 수 없습니다."
 

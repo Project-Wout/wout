@@ -1,12 +1,14 @@
 package com.wout.member.util
 
-import com.wout.member.dto.response.ElementScoreDetailResponse
-import com.wout.member.dto.response.WeatherScoreResponse
 import com.wout.member.entity.WeatherPreference
 import com.wout.member.entity.enums.ReactionLevel
+import com.wout.member.model.ElementScores
 import com.wout.member.model.WeatherGrade
+import com.wout.member.model.WeatherScore
 import org.springframework.stereotype.Component
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * packageName    : com.wout.member.util
@@ -50,7 +52,7 @@ class WeatherScoreCalculator {
      * @param humidity    상대 습도(%)
      * @param uvIndex     자외선 지수
      * @param pm25 / pm10 미세먼지(㎍/㎥) – 둘 중 큰 값을 사용
-     * @param pref        사용자 WeatherPreference
+     * @param preference        사용자 WeatherPreference
      */
     fun calculateTotalScore(
         temperature: Double,
@@ -58,16 +60,16 @@ class WeatherScoreCalculator {
         uvIndex: Double,
         pm25: Double,
         pm10: Double,
-        pref: WeatherPreference
-    ): WeatherScoreResponse {
+        preference: WeatherPreference
+    ): WeatherScore {
 
         /* ① 기본점수 = importance × 100 */
         val base = mapOf(
-            Elem.COLD to pref.importanceCold     * 100,
-            Elem.HEAT to pref.importanceHeat     * 100,
-            Elem.HUMI to pref.importanceHumidity * 100,
-            Elem.UV   to pref.importanceUv       * 100,
-            Elem.AIR  to pref.importanceAir      * 100
+            Elem.COLD to preference.importanceCold     * 100,
+            Elem.HEAT to preference.importanceHeat     * 100,
+            Elem.HUMI to preference.importanceHumidity * 100,
+            Elem.UV   to preference.importanceUv       * 100,
+            Elem.AIR  to preference.importanceAir      * 100
         )
 
         /* ② 요소별 편차(거리) 계산 */
@@ -76,15 +78,15 @@ class WeatherScoreCalculator {
         )
 
         /* ③ 민감도 계수 (HIGH=1.5, MEDIUM=1.0, LOW=0.5) */
-        val sens = ElementSensitivity.from(pref)
+        val sensitive = ElementSensitivity.from(preference)
 
         /* ④ 감점 = delta × 계수 + 극한 패널티 */
         val penalties = mapOf(
-            Elem.COLD to deltas[Elem.COLD]!! * sens.cold       + extremePenalty(Elem.COLD, temperature),
-            Elem.HEAT to deltas[Elem.HEAT]!! * sens.heat       + extremePenalty(Elem.HEAT, temperature),
-            Elem.HUMI to deltas[Elem.HUMI]!! * sens.humidity   + extremePenalty(Elem.HUMI, humidity),
-            Elem.UV   to deltas[Elem.UV]!!   * sens.uv         + extremePenalty(Elem.UV,   uvIndex),
-            Elem.AIR  to deltas[Elem.AIR]!!  * sens.airQuality + extremePenalty(Elem.AIR,  max(pm25, pm10))
+            Elem.COLD to deltas[Elem.COLD]!! * sensitive.cold       + extremePenalty(Elem.COLD, temperature),
+            Elem.HEAT to deltas[Elem.HEAT]!! * sensitive.heat       + extremePenalty(Elem.HEAT, temperature),
+            Elem.HUMI to deltas[Elem.HUMI]!! * sensitive.humidity   + extremePenalty(Elem.HUMI, humidity),
+            Elem.UV   to deltas[Elem.UV]!!   * sensitive.uv         + extremePenalty(Elem.UV,   uvIndex),
+            Elem.AIR  to deltas[Elem.AIR]!!  * sensitive.airQuality + extremePenalty(Elem.AIR,  max(pm25, pm10))
         )
 
         /* ⑤ 최종 점수 = max(기본 − 감점, 0) */
@@ -101,7 +103,7 @@ class WeatherScoreCalculator {
         }
 
         /* ⑦ DTO 반환 */
-        val elemDto = ElementScoreDetailResponse(
+        val elemDto = ElementScores(
             cold = final[Elem.COLD]!!.roundToInt(),
             heat = final[Elem.HEAT]!!.roundToInt(),
             humidity = final[Elem.HUMI]!!.roundToInt(),
@@ -109,7 +111,7 @@ class WeatherScoreCalculator {
             airQuality = final[Elem.AIR]!!.roundToInt()
         )
 
-        return WeatherScoreResponse(total, grade, elemDto)
+        return WeatherScore(total, grade, elemDto)
     }
 
     /* ---------- 내부 헬퍼 ---------- */
