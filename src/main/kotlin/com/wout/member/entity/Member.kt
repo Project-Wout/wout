@@ -79,27 +79,6 @@ class Member private constructor(
             )
         }
 
-        /**
-         * 완전한 정보로 회원 생성 (테스트용)
-         */
-        fun createWithFullInfo(
-            deviceId: String,
-            nickname: String? = null,
-            latitude: Double? = null,
-            longitude: Double? = null,
-            cityName: String? = null
-        ): Member {
-            require(deviceId.isNotBlank()) { "DeviceId는 필수값입니다" }
-            validateLocation(latitude, longitude)
-
-            return Member(
-                deviceId = deviceId,
-                nickname = nickname,
-                defaultLatitude = latitude,
-                defaultLongitude = longitude,
-                defaultCityName = cityName
-            )
-        }
 
         /**
          * 위치 정보 유효성 검증

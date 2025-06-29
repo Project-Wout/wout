@@ -1,9 +1,7 @@
 package com.wout.member.dto.request
 
-import jakarta.validation.constraints.Max
-import jakarta.validation.constraints.Min
-import jakarta.validation.constraints.NotNull
-import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.*
+import org.hibernate.validator.constraints.Range
 
 /**
  * packageName    : com.wout.member.dto.request
@@ -17,75 +15,75 @@ import jakarta.validation.constraints.Pattern
  * 2025-05-27        MinKyu Park       최초 생성
  */
 data class WeatherPreferenceSetupRequest(
-    // === 1단계: 우선순위 (괴로운 날씨 2개 선택) ===
-    @field:Pattern(
-        regexp = "^(heat|cold|humidity|wind|uv|pollution)$",
-        message = "1순위는 heat, cold, humidity, wind, uv, pollution 중 하나여야 합니다"
-    )
-    val priorityFirst: String? = null,
 
+    // ===== ① 민감도(ReactionLevel) =====
+    @field:NotBlank(message = "reactionCold 값은 필수입니다")
     @field:Pattern(
-        regexp = "^(heat|cold|humidity|wind|uv|pollution)$",
-        message = "2순위는 heat, cold, humidity, wind, uv, pollution 중 하나여야 합니다"
+        regexp = "^(high|medium|low)$",
+        flags = [Pattern.Flag.CASE_INSENSITIVE],
+        message = "reactionCold 값은 high, medium, low 중 하나여야 합니다"
     )
-    val prioritySecond: String? = null,
+    val reactionCold: String,
 
-    // === 2단계: 체감온도 기준점 ===
-    @field:NotNull(message = "쾌적 온도는 필수입니다")
-    @field:Min(value = 10, message = "쾌적 온도는 10도 이상이어야 합니다")
-    @field:Max(value = 30, message = "쾌적 온도는 30도 이하여야 합니다")
+    @field:NotBlank(message = "reactionHeat 값은 필수입니다")
+    @field:Pattern(
+        regexp = "^(high|medium|low)$",
+        flags = [Pattern.Flag.CASE_INSENSITIVE],
+        message = "reactionHeat 값은 high, medium, low 중 하나여야 합니다"
+    )
+    val reactionHeat: String,
+
+    @field:NotBlank(message = "reactionHumidity 값은 필수입니다")
+    @field:Pattern(
+        regexp = "^(high|medium|low)$",
+        flags = [Pattern.Flag.CASE_INSENSITIVE],
+        message = "reactionHumidity 값은 high, medium, low 중 하나여야 합니다"
+    )
+    val reactionHumidity: String,
+
+    @field:NotBlank(message = "reactionUv 값은 필수입니다")
+    @field:Pattern(
+        regexp = "^(high|medium|low)$",
+        flags = [Pattern.Flag.CASE_INSENSITIVE],
+        message = "reactionUv 값은 high, medium, low 중 하나여야 합니다"
+    )
+    val reactionUv: String,
+
+    @field:NotBlank(message = "reactionAir 값은 필수입니다")
+    @field:Pattern(
+        regexp = "^(high|medium|low)$",
+        flags = [Pattern.Flag.CASE_INSENSITIVE],
+        message = "reactionAir 값은 high, medium, low 중 하나여야 합니다"
+    )
+    val reactionAir: String,
+
+    // ===== ② 체감 기준 온도 =====
+    @field:NotNull(message = "comfortTemperature 값은 필수입니다")
+    @field:Min(value = 10, message = "comfortTemperature 는 10℃ 이상이어야 합니다")
+    @field:Max(value = 30, message = "comfortTemperature 는 30℃ 이하여야 합니다")
     val comfortTemperature: Int,
 
-    // === 3단계: 피부 반응 ===
-    @field:Pattern(
-        regexp = "^(high|medium|low)$",
-        message = "피부 반응은 high, medium, low 중 하나여야 합니다"
-    )
-    val skinReaction: String? = null,
+    // ===== ③ 요소별 중요도(비중) =====
+    @field:Range(min = 1, max = 100, message = "importanceCold 는 1~100 범위여야 합니다")
+    val importanceCold: Int,
 
-    // === 4단계: 습도 민감도 ===
-    @field:Pattern(
-        regexp = "^(high|medium|low)$",
-        message = "습도 반응은 high, medium, low 중 하나여야 합니다"
-    )
-    val humidityReaction: String? = null,
+    @field:Range(min = 1, max = 100, message = "importanceHeat 는 1~100 범위여야 합니다")
+    val importanceHeat: Int,
 
-    // === 5단계: 세부 조정 (선택사항) ===
-    @field:Min(value = 1, message = "온도 가중치는 1 이상이어야 합니다")
-    @field:Max(value = 100, message = "온도 가중치는 100 이하여야 합니다")
-    val temperatureWeight: Int = 50,
+    @field:Range(min = 1, max = 100, message = "importanceHumidity 는 1~100 범위여야 합니다")
+    val importanceHumidity: Int,
 
-    @field:Min(value = 1, message = "습도 가중치는 1 이상이어야 합니다")
-    @field:Max(value = 100, message = "습도 가중치는 100 이하여야 합니다")
-    val humidityWeight: Int = 50,
+    @field:Range(min = 1, max = 100, message = "importanceUv 는 1~100 범위여야 합니다")
+    val importanceUv: Int,
 
-    @field:Min(value = 1, message = "바람 가중치는 1 이상이어야 합니다")
-    @field:Max(value = 100, message = "바람 가중치는 100 이하여야 합니다")
-    val windWeight: Int = 50,
-
-    @field:Min(value = 1, message = "자외선 가중치는 1 이상이어야 합니다")
-    @field:Max(value = 100, message = "자외선 가중치는 100 이하여야 합니다")
-    val uvWeight: Int = 50,
-
-    @field:Min(value = 1, message = "대기질 가중치는 1 이상이어야 합니다")
-    @field:Max(value = 100, message = "대기질 가중치는 100 이하여야 합니다")
-    val airQualityWeight: Int = 50
+    @field:Range(min = 1, max = 100, message = "importanceAir 는 1~100 범위여야 합니다")
+    val importanceAir: Int
 ) {
-    /**
-     * 우선순위 중복 검증
-     */
-    fun isValidPriorities(): Boolean {
-        return if (priorityFirst != null && prioritySecond != null) {
-            priorityFirst != prioritySecond
-        } else {
-            true
-        }
-    }
 
-    /**
-     * 우선순위 리스트 반환
-     */
-    fun getPriorityList(): List<String> {
-        return listOfNotNull(priorityFirst, prioritySecond)
+    /** 중요도 합계가 100 ± 2 % 이내인지 검증 */
+    @AssertTrue(message = "importance 합계가 98~102 사이여야 합니다")
+    fun isValidImportanceSum(): Boolean {
+        val sum = importanceCold + importanceHeat + importanceHumidity + importanceUv + importanceAir
+        return sum in 98..102
     }
 }
