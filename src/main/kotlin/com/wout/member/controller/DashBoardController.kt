@@ -1,7 +1,7 @@
 package com.wout.member.controller
 
 import com.wout.common.response.ApiResponse
-import com.wout.member.dto.response.MemberWithPreferenceResponse
+import com.wout.member.dto.dashboard.response.DashboardResponse
 import com.wout.member.service.DashboardService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController
  * 25. 6. 18.        MinKyu Park       최초 생성
  */
 @RestController
-@RequestMapping("/api/login")
+@RequestMapping("/api/dashboard")
 @Tag(name = "대시보드 컨트롤러", description = "'홈'탭 관련 API")
 class DashBoardController (
     private val dashboardService: DashboardService
@@ -38,7 +38,7 @@ class DashBoardController (
     fun getMemberWithPreference(
         @Parameter(description = "디바이스 고유 식별자", required = true)
         @PathVariable @NotBlank(message = "Device ID는 필수입니다") deviceId: String
-    ): ApiResponse<MemberWithPreferenceResponse> {
+    ): ApiResponse<DashboardResponse> {
         val result = dashboardService.getMemberWithPreference(deviceId)
         return ApiResponse.success(result)
     }

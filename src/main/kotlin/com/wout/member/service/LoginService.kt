@@ -1,9 +1,9 @@
 package com.wout.member.service
 
-import com.wout.member.dto.request.MemberCreateRequest
-import com.wout.member.dto.request.WeatherPreferenceSetupRequest
-import com.wout.member.dto.response.MemberStatusResponse
-import com.wout.member.dto.response.WeatherPreferenceResponse
+import com.wout.member.dto.login.request.MemberCreateRequest
+import com.wout.member.dto.login.request.WeatherPreferenceSetupRequest
+import com.wout.member.dto.login.response.MemberStatusResponse
+import com.wout.member.dto.mypage.response.WeatherPreferenceResponse
 import com.wout.member.entity.Member
 import com.wout.member.mapper.WeatherPreferenceMapper
 import com.wout.member.repository.MemberRepository
@@ -46,7 +46,7 @@ class LoginService(
      * 신규 사용자 전용 - 온보딩 5단계 완료 시 호출
      *
      * 비즈니스 규칙:
-     * - 이 메서드는 신규 사용자만 호출 (checkMemberStatus에서 이미 분기 처리됨)
+     * - 이 메서드는 신규 사용자만 호출
      * - 따라서 중복 검증 불필요
      */
     @Transactional(rollbackFor = [Exception::class])

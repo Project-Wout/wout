@@ -81,33 +81,4 @@ class OutfitController(
         val result = outfitRecommendationService.getRecommendationDetail(deviceId, recommendationId)
         return ApiResponse.success(result)
     }
-
-    // ===== 2차 MVP 예정 기능들 (주석 처리) =====
-
-    /*
-    @Operation(
-        summary = "다중 아웃핏 추천 생성 (2차 MVP)",
-        description = "스타일별 다중 아웃핏 추천 (캐주얼, 정장, 민감형 등)"
-    )
-    @PostMapping("/recommendations/multiple")
-    fun generateMultipleOutfitRecommendations(
-        @Valid @RequestBody request: OutfitRecommendationRequest
-    ): ApiResponse<List<OutfitRecommendationResponse>> {
-        // 2차 MVP에서 구현 예정
-        throw NotImplementedException("2차 MVP에서 구현 예정")
-    }
-
-    @Operation(
-        summary = "추천 만족도 피드백 (2차 MVP)",
-        description = "아웃핏 추천 만족도 수집 및 알고리즘 개선"
-    )
-    @PostMapping("/{recommendationId}/feedback")
-    fun submitSatisfactionFeedback(
-        @PathVariable @Positive recommendationId: Long,
-        @Valid @RequestBody request: SatisfactionFeedbackRequest
-    ): ApiResponse<OutfitRecommendationResponse> {
-        // 2차 MVP에서 구현 예정 - 현재는 날씨 점수 피드백만 지원
-        throw NotImplementedException("2차 MVP에서 구현 예정")
-    }
-    */
 }

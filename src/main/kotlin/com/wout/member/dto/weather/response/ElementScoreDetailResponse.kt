@@ -1,4 +1,4 @@
-package com.wout.member.dto.response
+package com.wout.member.dto.weather.response
 
 /**
  * packageName    : com.wout.member.dto.response

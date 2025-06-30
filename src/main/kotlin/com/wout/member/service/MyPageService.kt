@@ -3,11 +3,12 @@ package com.wout.member.service
 import com.wout.common.exception.ApiException
 import com.wout.common.exception.ErrorCode.MEMBER_NOT_FOUND
 import com.wout.common.exception.ErrorCode.SENSITIVITY_PROFILE_NOT_FOUND
-import com.wout.member.dto.request.LocationUpdateRequest
-import com.wout.member.dto.request.WeatherPreferenceUpdateRequest
-import com.wout.member.dto.response.MemberResponse
-import com.wout.member.dto.response.WeatherPreferenceResponse
+import com.wout.member.dto.mypage.request.LocationUpdateRequest
+import com.wout.member.dto.mypage.request.WeatherPreferenceUpdateRequest
+import com.wout.member.dto.mypage.response.MemberResponse
+import com.wout.member.dto.mypage.response.WeatherPreferenceResponse
 import com.wout.member.entity.Member
+import com.wout.member.entity.enums.ReactionLevel
 import com.wout.member.mapper.MemberMapper
 import com.wout.member.mapper.WeatherPreferenceMapper
 import com.wout.member.repository.MemberRepository
@@ -91,27 +92,40 @@ class MyPageService(
         request: WeatherPreferenceUpdateRequest
     ): WeatherPreferenceResponse {
 
-        request.validate()
-
+        // 1) 회원·기존 선호도 조회
         val member = findMemberByDeviceId(deviceId)
-        val existingPreference =
-            weatherPreferenceRepository.findByMemberId(member.id) ?: throw ApiException(SENSITIVITY_PROFILE_NOT_FOUND)
+        val preference = weatherPreferenceRepository.findByMemberId(member.id)
+            ?: throw ApiException(SENSITIVITY_PROFILE_NOT_FOUND)
 
-        existingPreference.updatePreferences(
-            priorityFirst = request.priorityFirst,
-            prioritySecond = request.prioritySecond,
+        // 2) 문자열 → ReactionLevel 변환 헬퍼
+        fun toReaction(str: String?): ReactionLevel? = str?.let {
+            when (it.lowercase()) {
+                "high"   -> ReactionLevel.HIGH
+                "medium" -> ReactionLevel.MEDIUM
+                "low"    -> ReactionLevel.LOW
+                else     -> throw IllegalArgumentException("Invalid reaction level: $it")
+            }
+        }
+
+        // 3) 업데이트 (null 값은 유지)
+        preference.updatePreferences(
+            rxCold        = toReaction(request.reactionCold),
+            rxHeat        = toReaction(request.reactionHeat),
+            rxHumidity    = toReaction(request.reactionHumidity),
+            rxUv          = toReaction(request.reactionUv),
+            rxAir         = toReaction(request.reactionAir),
             comfortTemperature = request.comfortTemperature,
-            skinReaction = request.skinReaction,
-            humidityReaction = request.humidityReaction,
-            temperatureWeight = request.temperatureWeight,
-            humidityWeight = request.humidityWeight,
-            windWeight = request.windWeight,
-            uvWeight = request.uvWeight,
-            airQualityWeight = request.airQualityWeight
+            impCold       = request.importanceCold?.div(100.0),
+            impHeat       = request.importanceHeat?.div(100.0),
+            impHumidity   = request.importanceHumidity?.div(100.0),
+            impUv         = request.importanceUv?.div(100.0),
+            impAir        = request.importanceAir?.div(100.0)
         )
 
-        return weatherPreferenceMapper.toResponse(existingPreference)
+        // 4) 응답 DTO 변환
+        return weatherPreferenceMapper.toResponse(preference)
     }
+
 
     /**
      * 회원 탈퇴

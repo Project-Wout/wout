@@ -1,9 +1,9 @@
 package com.wout.member.controller
 
 import com.wout.common.response.ApiResponse
-import com.wout.member.dto.request.WeatherPreferenceSetupRequest
-import com.wout.member.dto.response.MemberStatusResponse
-import com.wout.member.dto.response.WeatherPreferenceResponse
+import com.wout.member.dto.login.request.WeatherPreferenceSetupRequest
+import com.wout.member.dto.login.response.MemberStatusResponse
+import com.wout.member.dto.mypage.response.WeatherPreferenceResponse
 import com.wout.member.service.LoginService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter

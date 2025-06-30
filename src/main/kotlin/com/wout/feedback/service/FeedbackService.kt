@@ -22,7 +22,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 import kotlin.math.max
-import kotlin.math.min
 
 /**
  * packageName    : com.wout.feedback.service
@@ -34,12 +33,14 @@ import kotlin.math.min
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
  * 2025-06-01        MinKyu Park       MVP 최초
- * 2025-06-08        MinKyu Park       빠른 학습(3~7일)용 리튠:
- *                                    • LEARNING_BASE_RATE = 0.22
- *                                    • DAILY_LIMIT = 8
- *                                    • 신뢰도 0.5 미만 → 미세 학습(0.05)
- *                                    • 보정 캡: 가중치 ±2, 쾌적온도 ±1℃
- */
+ * 2025-06-08  MinKyu Park   빠른 학습(3~7일)용 리튠
+ *                             • LEARNING_BASE_RATE = 0.22
+ *                             • DAILY_LIMIT = 8
+ *                             • 신뢰도 0.5 미만 → 미세 학습(0.05)
+ *                             • 보정 캡:
+ *                                 – 쾌적온도  ±1 ℃
+ *                                 – 중요도(COLD/HEAT) ±2 %p
+*/
 @Service
 @Transactional(readOnly = true)
 class FeedbackService(
@@ -52,40 +53,37 @@ class FeedbackService(
 ) {
 
     companion object {
-        private const val MAX_DAILY_FEEDBACKS = 8               // 🔹 일일 제출 한도
-        private const val STATISTICS_DAYS = 30
-        private const val LEARNING_BASE_RATE = 0.22             // 🔹 기본 학습률
-        private const val MIN_RELIABILITY = 0.5                 // 🔹 신뢰도 하한
-        private const val SMALL_LEARNING_RATE = 0.05            // 🔹 저신뢰도 학습률
-        private const val MAX_TEMP_ADJUST = 1                   // 🔹 쾌적온도 ±1℃
-        private const val MAX_WEIGHT_ADJUST = 2                 // 🔹 가중치 ±2
-        private const val MIN_WEIGHT = 25
-        private const val MAX_WEIGHT = 75
+        private const val MAX_DAILY_FEEDBACKS    = 8
+        private const val STATISTICS_DAYS        = 30
+        private const val BASE_LEARNING_RATE     = 0.22       // 신뢰도 가중 기본치
+        private const val SMALL_LEARNING_RATE    = 0.05       // 신뢰도 < 0.5 일 때
+        private const val TEMP_CAP               = 1          // ±1 ℃
+        private const val WEIGHT_CAP             = 0.02       // 2 % (= 0.02)
+        private const val MIN_WEIGHT_BOUND       = 0.05       // 5 %
+        private const val MAX_WEIGHT_BOUND       = 0.40       // 40 %
     }
 
     /* ======================== MVP 핵심 기능 ======================== */
 
-    /** 피드백 제출 */
     @Transactional
     fun submitFeedback(deviceId: String, request: FeedbackSubmitRequest): FeedbackResponse {
         validateDeviceId(deviceId)
         validateFeedbackRequest(request)
 
-        val member = findMemberByDeviceId(deviceId)
+        val member      = findMemberByDeviceId(deviceId)
         val weatherData = findWeatherDataById(request.weatherDataId)
-        val preference = findWeatherPreferenceByMemberId(member.id)
+        val preference  = findWeatherPreferenceByMemberId(member.id)
 
         validateDailyFeedbackLimit(member.id)
         validateDuplicateFeedback(member.id, request.weatherDataId)
 
         val feedback = createFeedback(member, weatherData, preference, request)
-        val saved = feedbackRepository.save(feedback)
+        val saved    = feedbackRepository.save(feedback)
         applyImmediateLearning(preference, saved)
 
         return feedbackMapper.toResponse(saved)
     }
 
-    /** 피드백 히스토리 */
     fun getFeedbackHistory(deviceId: String, pageable: Pageable): FeedbackHistoryResponse {
         val member = findMemberByDeviceId(deviceId)
         return feedbackMapper.toHistoryResponse(
@@ -93,34 +91,31 @@ class FeedbackService(
         )
     }
 
-    /** 30일 통계 */
     fun getFeedbackStatistics(deviceId: String): FeedbackStatisticsResponse {
         val member = findMemberByDeviceId(deviceId)
-        val list = feedbackRepository.findRecentFeedbacks(member.id, STATISTICS_DAYS)
+        val list   = feedbackRepository.findRecentFeedbacks(member.id, STATISTICS_DAYS)
         return feedbackMapper.toStatisticsResponse(list, STATISTICS_DAYS)
     }
 
-    /** 오늘 가능 여부 */
     fun canSubmitFeedbackToday(deviceId: String): Map<String, Any> {
-        val member = findMemberByDeviceId(deviceId)
+        val member   = findMemberByDeviceId(deviceId)
         val todayCnt = getTodayFeedbackCount(member.id)
         return mapOf(
-            "canSubmit" to (todayCnt < MAX_DAILY_FEEDBACKS),
-            "remainingCount" to max(0, MAX_DAILY_FEEDBACKS - todayCnt),
-            "maxDailyLimit" to MAX_DAILY_FEEDBACKS,
-            "todaySubmittedCount" to todayCnt
+            "canSubmit"            to (todayCnt < MAX_DAILY_FEEDBACKS),
+            "remainingCount"       to max(0, MAX_DAILY_FEEDBACKS - todayCnt),
+            "maxDailyLimit"        to MAX_DAILY_FEEDBACKS,
+            "todaySubmittedCount"  to todayCnt
         )
     }
 
-    /* ==================== Validation & Query Utils ==================== */
+    /* ======================== Validation ======================== */
 
     private fun validateDeviceId(id: String) { if (id.isBlank()) throw ApiException(INVALID_INPUT_VALUE) }
 
-    private fun validateFeedbackRequest(r: FeedbackSubmitRequest) {
+    private fun validateFeedbackRequest(r: FeedbackSubmitRequest) =
         try { FeedbackType.fromString(r.feedbackType) } catch (_: IllegalArgumentException) {
             throw ApiException(INVALID_INPUT_VALUE)
         }
-    }
 
     private fun validateDailyFeedbackLimit(memberId: Long) {
         if (getTodayFeedbackCount(memberId) >= MAX_DAILY_FEEDBACKS) throw ApiException(FEEDBACK_LIMIT_EXCEEDED)
@@ -132,9 +127,8 @@ class FeedbackService(
     }
 
     private fun getTodayFeedbackCount(memberId: Long): Int {
-        val now = LocalDateTime.now()
-        val start = now.toLocalDate().atStartOfDay()
-        val end = start.plusDays(1).minusNanos(1)
+        val start = LocalDateTime.now().toLocalDate().atStartOfDay()
+        val end   = start.plusDays(1).minusNanos(1)
         return feedbackRepository.countTodayFeedbacks(memberId, start, end).toInt()
     }
 
@@ -156,51 +150,68 @@ class FeedbackService(
         req: FeedbackSubmitRequest
     ): Feedback {
         val feels = pref.calculateFeelsLikeTemperature(data.temperature, data.windSpeed, data.humidity.toDouble())
-        val score = weatherScoreCalculator.calculateTotalScore(
-            data.temperature, data.humidity.toDouble(), data.windSpeed,
-            data.uvIndex ?: 0.0, data.pm25 ?: 0.0, data.pm10 ?: 0.0, pref
-        ).totalScore.toInt()
+
+        val scoreTotal = weatherScoreCalculator.calculateTotalScore(
+            data.temperature,
+            data.humidity.toDouble(),
+            data.uvIndex ?: 0.0,
+            data.pm25 ?: 0.0,
+            data.pm10 ?: 0.0,
+            pref
+        ).total.toInt()
 
         return Feedback.create(
-            memberId = member.id,
-            weatherDataId = req.weatherDataId,
-            feedbackType = FeedbackType.fromString(req.feedbackType),
-            actualTemperature = data.temperature,
+            memberId             = member.id,
+            weatherDataId        = req.weatherDataId,
+            feedbackType         = FeedbackType.fromString(req.feedbackType),
+            actualTemperature    = data.temperature,
             feelsLikeTemperature = feels,
-            weatherScore = score,
-            previousComfortTemp = pref.comfortTemperature,
-            comments = req.comments,
-            isConfirmed = req.isConfirmed
+            weatherScore         = scoreTotal,
+            previousComfortTemp  = pref.comfortTemperature,
+            comments             = req.comments,
+            isConfirmed          = req.isConfirmed
         )
     }
 
-    /** 빠른 학습 적용 */
+    /* ====================== Immediate Learning ====================== */
+
     @Transactional
     fun applyImmediateLearning(pref: WeatherPreference, fb: Feedback) {
-        if (!fb.needsTemperatureAdjustment()) return  // PERFECT
+        if (!fb.needsTemperatureAdjustment()) return
 
-        val reliability = fb.calculateReliabilityScore()
-        val baseRate = if (reliability < MIN_RELIABILITY) SMALL_LEARNING_RATE else LEARNING_BASE_RATE
+        /* 1) 학습률 계산 */
+        val reliability  = fb.calculateReliabilityScore()
+        val baseRate     = if (reliability < 0.5) SMALL_LEARNING_RATE else BASE_LEARNING_RATE
         val learningRate = reliability * baseRate
-        if (learningRate < 0.01) return     // 무시할 정도로 낮음
+        if (learningRate < 0.01) return
 
-        /* ---- 온도 조정 ---- */
-        val tempDeltaRaw = fb.adjustmentAmount * learningRate
-        val tempDelta = when {
-            tempDeltaRaw > 0 -> min(tempDeltaRaw, MAX_TEMP_ADJUST.toDouble())
-            tempDeltaRaw < 0 -> max(tempDeltaRaw, -MAX_TEMP_ADJUST.toDouble())
-            else -> 0.0
-        }.toInt()
+        /* 2) ComfortTemperature 조정 (±1 ℃) */
+        val tempDeltaRaw = fb.adjustmentAmount * learningRate      // ±2 × r × baseRate
+        val tempDelta    = tempDeltaRaw
+            .coerceIn(-TEMP_CAP.toDouble(), TEMP_CAP.toDouble())
+            .toInt()
 
-        /* ---- 가중치 조정 (온도가중치 only) ---- */
-        val weightDelta = if (tempDelta == 0) 0 else if (tempDelta > 0) MAX_WEIGHT_ADJUST else -MAX_WEIGHT_ADJUST
-        val newWeight = (pref.temperatureWeight + weightDelta).coerceIn(MIN_WEIGHT, MAX_WEIGHT)
+        /* 3) Importance(Cold/Heat) 조정 (±2 %) */
+        val weightDeltaRaw = WEIGHT_CAP * learningRate             // 최대 0.02
+        val weightDelta    = when {
+            fb.isColdFeedback() ->  weightDeltaRaw
+            fb.isHotFeedback()  -> -weightDeltaRaw
+            else                ->  0.0
+        }
+
+        val newCold = (pref.importanceCold + weightDelta)
+            .coerceIn(MIN_WEIGHT_BOUND, MAX_WEIGHT_BOUND)
+
+        val newHeat = (pref.importanceHeat - weightDelta)
+            .coerceIn(MIN_WEIGHT_BOUND, MAX_WEIGHT_BOUND)
+
+        /* 4) 반영 */
         val newComfortTemp = (pref.comfortTemperature + tempDelta).coerceIn(10, 30)
 
         pref.updatePreferences(
             comfortTemperature = newComfortTemp,
-            temperatureWeight = newWeight
+            impCold            = newCold,
+            impHeat            = newHeat
         )
-
     }
 }

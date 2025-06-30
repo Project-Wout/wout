@@ -1,11 +1,11 @@
 package com.wout.member.controller
 
 import com.wout.common.response.ApiResponse
-import com.wout.member.dto.request.LocationUpdateRequest
-import com.wout.member.dto.request.NicknameUpdateRequest
-import com.wout.member.dto.request.WeatherPreferenceUpdateRequest
-import com.wout.member.dto.response.MemberResponse
-import com.wout.member.dto.response.WeatherPreferenceResponse
+import com.wout.member.dto.mypage.request.LocationUpdateRequest
+import com.wout.member.dto.mypage.request.NicknameUpdateRequest
+import com.wout.member.dto.mypage.request.WeatherPreferenceUpdateRequest
+import com.wout.member.dto.mypage.response.MemberResponse
+import com.wout.member.dto.mypage.response.WeatherPreferenceResponse
 import com.wout.member.service.MyPageService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -31,8 +31,6 @@ import org.springframework.web.bind.annotation.*
 class MyPageController(
     private val myPageService: MyPageService
 ) {
-
-
 
     @Operation(
         summary = "회원 정보 조회",

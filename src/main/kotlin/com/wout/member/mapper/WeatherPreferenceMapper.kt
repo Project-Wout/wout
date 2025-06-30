@@ -1,8 +1,8 @@
 package com.wout.member.mapper
 
-import com.wout.member.dto.request.WeatherPreferenceSetupRequest
-import com.wout.member.dto.response.MemberWithPreferenceResponse
-import com.wout.member.dto.response.WeatherPreferenceResponse
+import com.wout.member.dto.dashboard.response.DashboardResponse
+import com.wout.member.dto.login.request.WeatherPreferenceSetupRequest
+import com.wout.member.dto.mypage.response.WeatherPreferenceResponse
 import com.wout.member.entity.Member
 import com.wout.member.entity.WeatherPreference
 import com.wout.member.entity.enums.ReactionLevel
@@ -81,8 +81,8 @@ class WeatherPreferenceMapper(
     fun toMemberWithPreferenceResponse(
         member: Member,
         preference: WeatherPreference?
-    ): MemberWithPreferenceResponse {
-        return MemberWithPreferenceResponse(
+    ): DashboardResponse {
+        return DashboardResponse(
             member            = memberMapper.toResponse(member),
             weatherPreference = preference?.let { toResponse(it) }
         )

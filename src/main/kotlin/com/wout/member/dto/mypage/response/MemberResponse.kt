@@ -1,4 +1,4 @@
-package com.wout.member.dto.response
+package com.wout.member.dto.mypage.response
 
 import java.time.LocalDateTime
 

@@ -1,4 +1,4 @@
-package com.wout.member.dto.request
+package com.wout.member.dto.weather.request
 
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank

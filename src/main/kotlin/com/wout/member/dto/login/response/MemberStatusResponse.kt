@@ -1,4 +1,4 @@
-package com.wout.member.dto.response
+package com.wout.member.dto.login.response
 
 import io.swagger.v3.oas.annotations.media.Schema
 

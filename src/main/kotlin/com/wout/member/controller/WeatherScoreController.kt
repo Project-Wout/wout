@@ -1,9 +1,9 @@
 package com.wout.member.controller
 
 import com.wout.common.response.ApiResponse
-import com.wout.member.dto.request.WeatherScoreCityRequest
-import com.wout.member.dto.request.WeatherScoreLocationRequest
-import com.wout.member.dto.response.WeatherScoreResponse
+import com.wout.member.dto.weather.request.WeatherScoreCityRequest
+import com.wout.member.dto.weather.request.WeatherScoreLocationRequest
+import com.wout.member.dto.weather.response.WeatherScoreResponse
 import com.wout.member.service.WeatherScoreService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag

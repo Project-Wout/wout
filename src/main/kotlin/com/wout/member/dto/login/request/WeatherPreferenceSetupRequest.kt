@@ -1,4 +1,4 @@
-package com.wout.member.dto.request
+package com.wout.member.dto.login.request
 
 import jakarta.validation.constraints.*
 import org.hibernate.validator.constraints.Range

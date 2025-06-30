@@ -2,10 +2,10 @@ package com.wout.member.service
 
 import com.wout.common.exception.ApiException
 import com.wout.common.exception.ErrorCode.*
-import com.wout.member.dto.response.ElementScoreDetailResponse
-import com.wout.member.dto.response.LocationInfo
-import com.wout.member.dto.response.WeatherInfo
-import com.wout.member.dto.response.WeatherScoreResponse
+import com.wout.member.dto.weather.response.ElementScoreDetailResponse
+import com.wout.member.dto.weather.response.LocationInfo
+import com.wout.member.dto.weather.response.WeatherInfo
+import com.wout.member.dto.weather.response.WeatherScoreResponse
 import com.wout.member.entity.Member
 import com.wout.member.entity.WeatherPreference
 import com.wout.member.model.WeatherScore
