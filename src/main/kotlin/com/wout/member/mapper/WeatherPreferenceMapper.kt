@@ -1,11 +1,11 @@
 package com.wout.member.mapper
 
-import com.wout.member.dto.request.WeatherPreferenceSetupRequest
-import com.wout.member.dto.request.WeatherPreferenceUpdateRequest
-import com.wout.member.dto.response.MemberWithPreferenceResponse
-import com.wout.member.dto.response.WeatherPreferenceResponse
+import com.wout.member.dto.dashboard.response.DashboardResponse
+import com.wout.member.dto.login.request.WeatherPreferenceSetupRequest
+import com.wout.member.dto.mypage.response.WeatherPreferenceResponse
 import com.wout.member.entity.Member
 import com.wout.member.entity.WeatherPreference
+import com.wout.member.entity.enums.ReactionLevel
 import org.springframework.stereotype.Component
 
 /**
@@ -24,89 +24,67 @@ class WeatherPreferenceMapper(
     private val memberMapper: MemberMapper
 ) {
 
-    /**
-     * SetupRequest -> Entity 변환 (새 설정)
-     */
+    /* ---------- String → ReactionLevel 변환 ---------- */
+    private fun toReaction(value: String): ReactionLevel =
+        when (value.lowercase()) {
+            "high"   -> ReactionLevel.HIGH
+            "medium" -> ReactionLevel.MEDIUM
+            "low"    -> ReactionLevel.LOW
+            else     -> throw IllegalArgumentException("Invalid reaction level: $value")
+        }
+
+    /* ---------- SetupRequest → Entity ---------- */
     fun toEntity(memberId: Long, request: WeatherPreferenceSetupRequest): WeatherPreference {
         return WeatherPreference.createFromSetup(
             memberId = memberId,
-            priorityFirst = request.priorityFirst,
-            prioritySecond = request.prioritySecond,
+            rxCold       = toReaction(request.reactionCold),
+            rxHeat       = toReaction(request.reactionHeat),
+            rxHumidity   = toReaction(request.reactionHumidity),
+            rxUv         = toReaction(request.reactionUv),
+            rxAir        = toReaction(request.reactionAir),
             comfortTemperature = request.comfortTemperature,
-            skinReaction = request.skinReaction,
-            humidityReaction = request.humidityReaction,
-            temperatureWeight = request.temperatureWeight,
-            humidityWeight = request.humidityWeight,
-            windWeight = request.windWeight,
-            uvWeight = request.uvWeight,
-            airQualityWeight = request.airQualityWeight
+            impCold      = request.importanceCold      / 100.0,
+            impHeat      = request.importanceHeat      / 100.0,
+            impHumidity  = request.importanceHumidity  / 100.0,
+            impUv        = request.importanceUv        / 100.0,
+            impAir       = request.importanceAir       / 100.0
         )
     }
 
-    /**
-     * Entity -> Response 변환
-     */
+    /* ---------- Entity → Response ---------- */
     fun toResponse(preference: WeatherPreference): WeatherPreferenceResponse {
         return WeatherPreferenceResponse(
-            id = preference.id,
-            memberId = preference.memberId,
-            priorityFirst = preference.priorityFirst,
-            prioritySecond = preference.prioritySecond,
-            priorities = preference.getPriorityList(),
-            comfortTemperature = preference.comfortTemperature,
-            skinReaction = preference.skinReaction,
-            humidityReaction = preference.humidityReaction,
-            temperatureWeight = preference.temperatureWeight,
-            humidityWeight = preference.humidityWeight,
-            windWeight = preference.windWeight,
-            uvWeight = preference.uvWeight,
-            airQualityWeight = preference.airQualityWeight,
+            id                  = preference.id,
+            memberId            = preference.memberId,
+
+            reactionCold        = preference.reactionCold,
+            reactionHeat        = preference.reactionHeat,
+            reactionHumidity    = preference.reactionHumidity,
+            reactionUv          = preference.reactionUv,
+            reactionAir         = preference.reactionAir,
+
+            comfortTemperature  = preference.comfortTemperature,
+
+            importanceCold      = (preference.importanceCold      * 100).toInt(),
+            importanceHeat      = (preference.importanceHeat      * 100).toInt(),
+            importanceHumidity  = (preference.importanceHumidity  * 100).toInt(),
+            importanceUv        = (preference.importanceUv        * 100).toInt(),
+            importanceAir       = (preference.importanceAir       * 100).toInt(),
+
             personalTempCorrection = preference.personalTempCorrection,
-            isSetupCompleted = preference.isSetupCompleted,
-            createdAt = preference.createdAt,
-            updatedAt = preference.updatedAt
+            createdAt           = preference.createdAt,
+            updatedAt           = preference.updatedAt
         )
     }
 
-    /**
-     * Member + WeatherPreference -> MemberWithPreferenceResponse 변환
-     */
+    /* ---------- Member + Preference → 복합 Response ---------- */
     fun toMemberWithPreferenceResponse(
         member: Member,
         preference: WeatherPreference?
-    ): MemberWithPreferenceResponse {
-        return MemberWithPreferenceResponse(
-            member = memberMapper.toResponse(member),
+    ): DashboardResponse {
+        return DashboardResponse(
+            member            = memberMapper.toResponse(member),
             weatherPreference = preference?.let { toResponse(it) }
-        )
-    }
-
-    /**
-     * UpdateRequest로 기존 엔티티 업데이트
-     */
-    fun updateEntity(
-        existing: WeatherPreference,
-        request: WeatherPreferenceUpdateRequest
-    ): WeatherPreference {
-        val newComfortTemp = request.comfortTemperature ?: existing.comfortTemperature
-        val newTempWeight = request.temperatureWeight ?: existing.temperatureWeight
-        val newHumidityWeight = request.humidityWeight ?: existing.humidityWeight
-        val newWindWeight = request.windWeight ?: existing.windWeight
-        val newUvWeight = request.uvWeight ?: existing.uvWeight
-        val newAirQualityWeight = request.airQualityWeight ?: existing.airQualityWeight
-
-        return WeatherPreference.createFromSetup(
-            memberId = existing.memberId,
-            priorityFirst = existing.priorityFirst,
-            prioritySecond = existing.prioritySecond,
-            comfortTemperature = newComfortTemp,
-            skinReaction = existing.skinReaction,
-            humidityReaction = existing.humidityReaction,
-            temperatureWeight = newTempWeight,
-            humidityWeight = newHumidityWeight,
-            windWeight = newWindWeight,
-            uvWeight = newUvWeight,
-            airQualityWeight = newAirQualityWeight
         )
     }
 }

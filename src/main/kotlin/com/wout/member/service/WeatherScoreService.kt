@@ -2,21 +2,22 @@ package com.wout.member.service
 
 import com.wout.common.exception.ApiException
 import com.wout.common.exception.ErrorCode.*
-import com.wout.member.dto.response.ElementScoreDetails
-import com.wout.member.dto.response.LocationInfo
-import com.wout.member.dto.response.WeatherInfo
-import com.wout.member.dto.response.WeatherScoreResponse
+import com.wout.member.dto.weather.response.ElementScoreDetailResponse
+import com.wout.member.dto.weather.response.LocationInfo
+import com.wout.member.dto.weather.response.WeatherInfo
+import com.wout.member.dto.weather.response.WeatherScoreResponse
 import com.wout.member.entity.Member
 import com.wout.member.entity.WeatherPreference
+import com.wout.member.model.WeatherScore
 import com.wout.member.repository.MemberRepository
 import com.wout.member.repository.WeatherPreferenceRepository
 import com.wout.member.util.WeatherMessage
 import com.wout.member.util.WeatherScoreCalculator
-import com.wout.member.util.WeatherScoreResult
 import com.wout.weather.entity.WeatherData
 import com.wout.weather.service.WeatherService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import kotlin.math.roundToInt
 
 /**
  * packageName    : com.wout.member.service
@@ -50,12 +51,10 @@ class WeatherScoreService(
         latitude: Double,
         longitude: Double
     ): WeatherScoreResponse {
-        validateDeviceId(deviceId)
-        validateCoordinates(latitude, longitude)
 
         val member = findMemberByDeviceId(deviceId)
         val weatherPreference = findWeatherPreferenceByMemberId(member.id)
-        val weatherData = getWeatherDataSafely(latitude, longitude)
+        val weatherData = getWeatherData(latitude, longitude)
 
         return calculateAndBuildResponse(weatherData, weatherPreference, latitude, longitude)
     }
@@ -67,12 +66,10 @@ class WeatherScoreService(
         deviceId: String,
         cityName: String
     ): WeatherScoreResponse {
-        validateDeviceId(deviceId)
-        validateCityName(cityName)
 
         val member = findMemberByDeviceId(deviceId)
         val weatherPreference = findWeatherPreferenceByMemberId(member.id)
-        val weatherData = getWeatherDataSafelyByCity(cityName)
+        val weatherData = getWeatherDataByCity(cityName)
 
         return calculateAndBuildResponse(
             weatherData,
@@ -80,29 +77,6 @@ class WeatherScoreService(
             weatherData.latitude,
             weatherData.longitude
         )
-    }
-
-    // ===== 입력값 검증 메서드들 =====
-
-    private fun validateDeviceId(deviceId: String) {
-        if (deviceId.isBlank()) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
-    }
-
-    private fun validateCoordinates(latitude: Double, longitude: Double) {
-        if (latitude !in -90.0..90.0) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
-        if (longitude !in -180.0..180.0) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
-    }
-
-    private fun validateCityName(cityName: String) {
-        if (cityName.isBlank()) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
     }
 
     // ===== 공통 조회 메서드들 =====
@@ -116,18 +90,18 @@ class WeatherScoreService(
             ?: throw ApiException(SENSITIVITY_PROFILE_NOT_FOUND)
     }
 
-    private fun getWeatherDataSafely(latitude: Double, longitude: Double): WeatherData {
+    private fun getWeatherData(latitude: Double, longitude: Double): WeatherData {
         return try {
             weatherService.getCurrentWeatherData(latitude, longitude)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             throw ApiException(WEATHER_DATA_NOT_FOUND)
         }
     }
 
-    private fun getWeatherDataSafelyByCity(cityName: String): WeatherData {
+    private fun getWeatherDataByCity(cityName: String): WeatherData {
         return try {
             weatherService.getCurrentWeatherDataByCity(cityName)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             throw ApiException(WEATHER_DATA_NOT_FOUND)
         }
     }
@@ -140,11 +114,11 @@ class WeatherScoreService(
         latitude: Double,
         longitude: Double
     ): WeatherScoreResponse {
-        val scoreResult = calculatePersonalizedScoreSafely(weatherData, weatherPreference)
-        val personalizedMessage = weatherMessage.generatePersonalizedMessage(scoreResult, weatherPreference)
+        val weatherScore = calculatePersonalizedScore(weatherData, weatherPreference)
+        val personalizedMessage = weatherMessage.generatePersonalizedMessage(weatherScore, weatherPreference)
 
         return buildWeatherScoreResponse(
-            scoreResult = scoreResult,
+            score = weatherScore,
             personalizedMessage = personalizedMessage,
             weatherData = weatherData,
             weatherPreference = weatherPreference,
@@ -153,27 +127,26 @@ class WeatherScoreService(
         )
     }
 
-    private fun calculatePersonalizedScoreSafely(
+    private fun calculatePersonalizedScore(
         weatherData: WeatherData,
         weatherPreference: WeatherPreference
-    ): WeatherScoreResult {
+    ): WeatherScore {
         return try {
             weatherScoreCalculator.calculateTotalScore(
                 temperature = weatherData.temperature,
                 humidity = weatherData.humidity.toDouble(),
-                windSpeed = weatherData.windSpeed,
                 uvIndex = weatherData.uvIndex ?: 0.0,
                 pm25 = weatherData.pm25 ?: 0.0,
                 pm10 = weatherData.pm10 ?: 0.0,
-                weatherPreference = weatherPreference
+                preference = weatherPreference
             )
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             throw ApiException(INTERNAL_SERVER_ERROR)
         }
     }
 
     private fun buildWeatherScoreResponse(
-        scoreResult: WeatherScoreResult,
+        score: WeatherScore,
         personalizedMessage: String,
         weatherData: WeatherData,
         weatherPreference: WeatherPreference,
@@ -181,15 +154,15 @@ class WeatherScoreService(
         longitude: Double
     ): WeatherScoreResponse {
         return WeatherScoreResponse(
-            totalScore = scoreResult.totalScore.toInt(),
-            grade = scoreResult.grade,
+            totalScore = score.total.roundToInt(),
+            grade = score.grade,
             message = personalizedMessage,
-            elementScores = ElementScoreDetails(
-                temperature = scoreResult.elementScores.temperature.toInt(),
-                humidity = scoreResult.elementScores.humidity.toInt(),
-                wind = scoreResult.elementScores.wind.toInt(),
-                uv = scoreResult.elementScores.uv.toInt(),
-                airQuality = scoreResult.elementScores.airQuality.toInt()
+            elementScores = ElementScoreDetailResponse(
+                cold = score.elements.cold,
+                heat = score.elements.heat,
+                humidity = score.elements.humidity,
+                uv = score.elements.uv,
+                airQuality = score.elements.airQuality
             ),
             weatherInfo = WeatherInfo(
                 temperature = weatherData.temperature,
@@ -211,4 +184,5 @@ class WeatherScoreService(
             )
         )
     }
+
 }

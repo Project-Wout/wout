@@ -21,20 +21,26 @@ import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
+import kotlin.math.max
 
 /**
  * packageName    : com.wout.feedback.service
  * fileName       : FeedbackService
  * author         : MinKyu Park
  * date           : 2025-06-01
- * description    : 피드백 서비스 MVP 버전 (핵심 기능만)
+ * description    : 피드백 서비스 (학습률 0.22 & 8개/일 정책 반영)
  * ===========================================================
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
- * 2025-06-01        MinKyu Park       최초 생성 (MVP 필수 기능만)
- * 2025-06-01        MinKyu Park       가이드 v2.0 적용 (Orchestrator 역할)
- * 2025-06-02        MinKyu Park       코드 리뷰 반영 (에러 코드, 트랜잭션, 학습 로직 수정)
- */
+ * 2025-06-01        MinKyu Park       MVP 최초
+ * 2025-06-08  MinKyu Park   빠른 학습(3~7일)용 리튠
+ *                             • LEARNING_BASE_RATE = 0.22
+ *                             • DAILY_LIMIT = 8
+ *                             • 신뢰도 0.5 미만 → 미세 학습(0.05)
+ *                             • 보정 캡:
+ *                                 – 쾌적온도  ±1 ℃
+ *                                 – 중요도(COLD/HEAT) ±2 %p
+*/
 @Service
 @Transactional(readOnly = true)
 class FeedbackService(
@@ -42,241 +48,170 @@ class FeedbackService(
     private val memberRepository: MemberRepository,
     private val weatherPreferenceRepository: WeatherPreferenceRepository,
     private val weatherDataRepository: WeatherDataRepository,
-    private val weatherScoreCalculator: WeatherScoreCalculator,  // ✅ 추가: 실제 점수 계산용
+    private val weatherScoreCalculator: WeatherScoreCalculator,
     private val feedbackMapper: FeedbackMapper
 ) {
 
     companion object {
-        private const val MAX_DAILY_FEEDBACKS = 10
-        private const val STATISTICS_DAYS = 30
+        private const val MAX_DAILY_FEEDBACKS    = 8
+        private const val STATISTICS_DAYS        = 30
+        private const val BASE_LEARNING_RATE     = 0.22       // 신뢰도 가중 기본치
+        private const val SMALL_LEARNING_RATE    = 0.05       // 신뢰도 < 0.5 일 때
+        private const val TEMP_CAP               = 1          // ±1 ℃
+        private const val WEIGHT_CAP             = 0.02       // 2 % (= 0.02)
+        private const val MIN_WEIGHT_BOUND       = 0.05       // 5 %
+        private const val MAX_WEIGHT_BOUND       = 0.40       // 40 %
     }
 
-    // ===== MVP 핵심 기능들 =====
+    /* ======================== MVP 핵심 기능 ======================== */
 
-    /**
-     * 피드백 제출 (MVP 핵심 기능)
-     */
     @Transactional
     fun submitFeedback(deviceId: String, request: FeedbackSubmitRequest): FeedbackResponse {
-        // 1) 입력값 검증
         validateDeviceId(deviceId)
         validateFeedbackRequest(request)
 
-        // 2) 데이터 조회 (여러 엔티티 조합 - 서비스 책임)
-        val member = findMemberByDeviceId(deviceId)
+        val member      = findMemberByDeviceId(deviceId)
         val weatherData = findWeatherDataById(request.weatherDataId)
-        val weatherPreference = findWeatherPreferenceByMemberId(member.id)
+        val preference  = findWeatherPreferenceByMemberId(member.id)
 
-        // 3) 비즈니스 규칙 검증
         validateDailyFeedbackLimit(member.id)
         validateDuplicateFeedback(member.id, request.weatherDataId)
 
-        // 4) 피드백 생성 (엔티티 팩토리 메서드 사용)
-        val feedback = createFeedback(
-            member = member,
-            weatherData = weatherData,
-            weatherPreference = weatherPreference,
-            request = request
-        )
+        val feedback = createFeedback(member, weatherData, preference, request)
+        val saved    = feedbackRepository.save(feedback)
+        applyImmediateLearning(preference, saved)
 
-        // 5) 저장 및 즉시 학습 적용
-        val savedFeedback = feedbackRepository.save(feedback)
-        applyImmediateLearning(weatherPreference, savedFeedback) // ✅ 수정: @Transactional 제거로 동일 트랜잭션에서 실행
-
-        return feedbackMapper.toResponse(savedFeedback)
+        return feedbackMapper.toResponse(saved)
     }
 
-    /**
-     * 피드백 히스토리 조회 (MVP 핵심 기능)
-     */
     fun getFeedbackHistory(deviceId: String, pageable: Pageable): FeedbackHistoryResponse {
-        validateDeviceId(deviceId)
-
         val member = findMemberByDeviceId(deviceId)
-        val feedbackPage = feedbackRepository.findByMemberIdOrderByCreatedAtDesc(member.id, pageable)
-
-        return feedbackMapper.toHistoryResponse(feedbackPage)
-    }
-
-    /**
-     * 피드백 통계 조회 (MVP 기본 통계)
-     */
-    fun getFeedbackStatistics(deviceId: String): FeedbackStatisticsResponse {
-        validateDeviceId(deviceId)
-
-        val member = findMemberByDeviceId(deviceId)
-        val recentFeedbacks = feedbackRepository.findRecentFeedbacks(member.id, STATISTICS_DAYS)
-
-        return feedbackMapper.toStatisticsResponse(recentFeedbacks, STATISTICS_DAYS)
-    }
-
-    /**
-     * 오늘 피드백 제출 가능 여부 확인 (MVP 유틸리티)
-     */
-    fun canSubmitFeedbackToday(deviceId: String): Map<String, Any> {
-        validateDeviceId(deviceId)
-
-        val member = findMemberByDeviceId(deviceId)
-        val todayCount = getTodayFeedbackCount(member.id)
-
-        val canSubmit = todayCount < MAX_DAILY_FEEDBACKS
-        val remainingCount = maxOf(0, MAX_DAILY_FEEDBACKS - todayCount)
-
-        return mapOf(
-            "canSubmit" to canSubmit,
-            "remainingCount" to remainingCount,
-            "maxDailyLimit" to MAX_DAILY_FEEDBACKS,
-            "todaySubmittedCount" to todayCount
+        return feedbackMapper.toHistoryResponse(
+            feedbackRepository.findByMemberIdOrderByCreatedAtDesc(member.id, pageable)
         )
     }
 
-    // ===== 입력값 검증 메서드들 =====
-
-    private fun validateDeviceId(deviceId: String) {
-        if (deviceId.isBlank()) {
-            throw ApiException(INVALID_INPUT_VALUE)
-        }
+    fun getFeedbackStatistics(deviceId: String): FeedbackStatisticsResponse {
+        val member = findMemberByDeviceId(deviceId)
+        val list   = feedbackRepository.findRecentFeedbacks(member.id, STATISTICS_DAYS)
+        return feedbackMapper.toStatisticsResponse(list, STATISTICS_DAYS)
     }
 
-    private fun validateFeedbackRequest(request: FeedbackSubmitRequest) {
-        try {
-            FeedbackType.fromString(request.feedbackType)
-        } catch (_: IllegalArgumentException) {
+    fun canSubmitFeedbackToday(deviceId: String): Map<String, Any> {
+        val member   = findMemberByDeviceId(deviceId)
+        val todayCnt = getTodayFeedbackCount(member.id)
+        return mapOf(
+            "canSubmit"            to (todayCnt < MAX_DAILY_FEEDBACKS),
+            "remainingCount"       to max(0, MAX_DAILY_FEEDBACKS - todayCnt),
+            "maxDailyLimit"        to MAX_DAILY_FEEDBACKS,
+            "todaySubmittedCount"  to todayCnt
+        )
+    }
+
+    /* ======================== Validation ======================== */
+
+    private fun validateDeviceId(id: String) { if (id.isBlank()) throw ApiException(INVALID_INPUT_VALUE) }
+
+    private fun validateFeedbackRequest(r: FeedbackSubmitRequest) =
+        try { FeedbackType.fromString(r.feedbackType) } catch (_: IllegalArgumentException) {
             throw ApiException(INVALID_INPUT_VALUE)
         }
-    }
 
     private fun validateDailyFeedbackLimit(memberId: Long) {
-        val todayCount = getTodayFeedbackCount(memberId)
-        if (todayCount >= MAX_DAILY_FEEDBACKS) {
-            throw ApiException(FEEDBACK_LIMIT_EXCEEDED)
-        }
+        if (getTodayFeedbackCount(memberId) >= MAX_DAILY_FEEDBACKS) throw ApiException(FEEDBACK_LIMIT_EXCEEDED)
     }
 
     private fun validateDuplicateFeedback(memberId: Long, weatherDataId: Long) {
-        if (feedbackRepository.existsByMemberIdAndWeatherDataId(memberId, weatherDataId)) {
-            throw ApiException(DUPLICATE_FEEDBACK)  // ✅ 수정: INVALID_INPUT_VALUE → DUPLICATE_FEEDBACK
-        }
+        if (feedbackRepository.existsByMemberIdAndWeatherDataId(memberId, weatherDataId))
+            throw ApiException(DUPLICATE_FEEDBACK)
     }
 
-    // ===== 공통 조회 메서드들 =====
-
-    private fun findMemberByDeviceId(deviceId: String): Member {
-        return memberRepository.findByDeviceId(deviceId)
-            ?: throw ApiException(MEMBER_NOT_FOUND)
+    private fun getTodayFeedbackCount(memberId: Long): Int {
+        val start = LocalDateTime.now().toLocalDate().atStartOfDay()
+        val end   = start.plusDays(1).minusNanos(1)
+        return feedbackRepository.countTodayFeedbacks(memberId, start, end).toInt()
     }
 
-    private fun findWeatherDataById(weatherDataId: Long): WeatherData {
-        return weatherDataRepository.findById(weatherDataId).orElseThrow {
-            ApiException(WEATHER_DATA_NOT_FOUND)
-        }
-    }
+    private fun findMemberByDeviceId(id: String): Member =
+        memberRepository.findByDeviceId(id) ?: throw ApiException(MEMBER_NOT_FOUND)
 
-    private fun findWeatherPreferenceByMemberId(memberId: Long): WeatherPreference {
-        return weatherPreferenceRepository.findByMemberId(memberId)
-            ?: throw ApiException(SENSITIVITY_PROFILE_NOT_FOUND)
-    }
+    private fun findWeatherPreferenceByMemberId(id: Long): WeatherPreference =
+        weatherPreferenceRepository.findByMemberId(id) ?: throw ApiException(SENSITIVITY_PROFILE_NOT_FOUND)
 
-    // ===== 비즈니스 로직 메서드들 (서비스 책임) =====
+    private fun findWeatherDataById(id: Long): WeatherData =
+        weatherDataRepository.findById(id).orElseThrow { ApiException(WEATHER_DATA_NOT_FOUND) }
 
-    /**
-     * 피드백 생성 (여러 엔티티 조합 필요 - 서비스 책임)
-     */
+    /* =========================== Core =========================== */
+
     private fun createFeedback(
         member: Member,
-        weatherData: WeatherData,
-        weatherPreference: WeatherPreference,
-        request: FeedbackSubmitRequest
+        data: WeatherData,
+        pref: WeatherPreference,
+        req: FeedbackSubmitRequest
     ): Feedback {
-        // WeatherPreference의 도메인 로직을 활용해서 개인화된 체감온도 계산
-        val personalizedFeelsLike = weatherPreference.calculateFeelsLikeTemperature(
-            actualTemp = weatherData.temperature,
-            windSpeed = weatherData.windSpeed,
-            humidity = weatherData.humidity.toDouble()
-        )
+        val feels = pref.calculateFeelsLikeTemperature(data.temperature, data.windSpeed, data.humidity.toDouble())
 
-        // ✅ 수정: 실제 날씨 점수 계산 (하드코딩 85 제거)
-        val actualWeatherScore = calculateActualWeatherScore(weatherData, weatherPreference)
+        val scoreTotal = weatherScoreCalculator.calculateTotalScore(
+            data.temperature,
+            data.humidity.toDouble(),
+            data.uvIndex ?: 0.0,
+            data.pm25 ?: 0.0,
+            data.pm10 ?: 0.0,
+            pref
+        ).total.toInt()
 
         return Feedback.create(
-            memberId = member.id,
-            weatherDataId = request.weatherDataId,
-            feedbackType = FeedbackType.fromString(request.feedbackType),
-            actualTemperature = weatherData.temperature,
-            feelsLikeTemperature = personalizedFeelsLike,
-            weatherScore = actualWeatherScore,  // ✅ 실제 계산된 점수 사용
-            previousComfortTemp = weatherPreference.comfortTemperature,
-            comments = request.comments,
-            isConfirmed = request.isConfirmed
+            memberId             = member.id,
+            weatherDataId        = req.weatherDataId,
+            feedbackType         = FeedbackType.fromString(req.feedbackType),
+            actualTemperature    = data.temperature,
+            feelsLikeTemperature = feels,
+            weatherScore         = scoreTotal,
+            previousComfortTemp  = pref.comfortTemperature,
+            comments             = req.comments,
+            isConfirmed          = req.isConfirmed
         )
     }
 
-    /**
-     * 실제 날씨 점수 계산
-     * WeatherScoreCalculator 발생하는 예외는 그대로 전파
-     */
-    private fun calculateActualWeatherScore(
-        weatherData: WeatherData,
-        weatherPreference: WeatherPreference
-    ): Int {
-        val weatherScoreResult = weatherScoreCalculator.calculateTotalScore(
-            temperature = weatherData.temperature,
-            humidity = weatherData.humidity.toDouble(),
-            windSpeed = weatherData.windSpeed,
-            uvIndex = weatherData.uvIndex ?: 0.0,
-            pm25 = weatherData.pm25 ?: 0.0,
-            pm10 = weatherData.pm10 ?: 0.0,
-            weatherPreference = weatherPreference
+    /* ====================== Immediate Learning ====================== */
+
+    @Transactional
+    fun applyImmediateLearning(pref: WeatherPreference, fb: Feedback) {
+        if (!fb.needsTemperatureAdjustment()) return
+
+        /* 1) 학습률 계산 */
+        val reliability  = fb.calculateReliabilityScore()
+        val baseRate     = if (reliability < 0.5) SMALL_LEARNING_RATE else BASE_LEARNING_RATE
+        val learningRate = reliability * baseRate
+        if (learningRate < 0.01) return
+
+        /* 2) ComfortTemperature 조정 (±1 ℃) */
+        val tempDeltaRaw = fb.adjustmentAmount * learningRate      // ±2 × r × baseRate
+        val tempDelta    = tempDeltaRaw
+            .coerceIn(-TEMP_CAP.toDouble(), TEMP_CAP.toDouble())
+            .toInt()
+
+        /* 3) Importance(Cold/Heat) 조정 (±2 %) */
+        val weightDeltaRaw = WEIGHT_CAP * learningRate             // 최대 0.02
+        val weightDelta    = when {
+            fb.isColdFeedback() ->  weightDeltaRaw
+            fb.isHotFeedback()  -> -weightDeltaRaw
+            else                ->  0.0
+        }
+
+        val newCold = (pref.importanceCold + weightDelta)
+            .coerceIn(MIN_WEIGHT_BOUND, MAX_WEIGHT_BOUND)
+
+        val newHeat = (pref.importanceHeat - weightDelta)
+            .coerceIn(MIN_WEIGHT_BOUND, MAX_WEIGHT_BOUND)
+
+        /* 4) 반영 */
+        val newComfortTemp = (pref.comfortTemperature + tempDelta).coerceIn(10, 30)
+
+        pref.updatePreferences(
+            comfortTemperature = newComfortTemp,
+            impCold            = newCold,
+            impHeat            = newHeat
         )
-        return weatherScoreResult.totalScore.toInt()
-    }
-
-    /**
-     * 즉시 학습 적용 (여러 엔티티 조합 필요 - 서비스 책임)
-     * ✅ 수정: @Transactional 제거로 중첩 트랜잭션 방지
-     */
-    fun applyImmediateLearning(preference: WeatherPreference, feedback: Feedback) {
-        // 피드백의 신뢰도가 충분한지 확인 (도메인 로직 활용)
-        if (!feedback.needsTemperatureAdjustment()) {
-            return // 완벽한 피드백은 학습 불필요
-        }
-
-        val learningWeight = feedback.getLearningWeight() // 도메인 로직 활용
-        if (learningWeight < 0.3) {
-            return // 신뢰도가 낮으면 학습 스킵
-        }
-
-        val updatedPreference = when {
-            feedback.isColdFeedback() -> {
-                // 추위 피드백: 쾌적온도를 높여서 더 따뜻해야 쾌적하다고 학습
-                val adjustment = (feedback.adjustmentAmount * learningWeight).toInt()
-                preference.update(
-                    comfortTemperature = (preference.comfortTemperature + adjustment).coerceIn(10, 30),
-                    temperatureWeight = (preference.temperatureWeight + 2).coerceIn(30, 70)  // ✅ 수정: 30-70 범위
-                )
-            }
-            feedback.isHotFeedback() -> {
-                // 더위 피드백: 쾌적온도를 낮춰서 더 시원해야 쾌적하다고 학습
-                val adjustment = (feedback.adjustmentAmount * learningWeight).toInt()
-                preference.update(
-                    comfortTemperature = (preference.comfortTemperature - adjustment).coerceIn(10, 30),  // ✅ 수정: 빼기로 변경
-                    temperatureWeight = (preference.temperatureWeight + 2).coerceIn(30, 70)  // ✅ 수정: 30-70 범위
-                )
-            }
-            else -> preference // 완벽한 피드백은 변경 없음
-        }
-
-        weatherPreferenceRepository.save(updatedPreference)
-    }
-
-    /**
-     * 오늘 피드백 개수 조회 (정확한 날짜 범위)
-     */
-    private fun getTodayFeedbackCount(memberId: Long): Int {
-        val now = LocalDateTime.now()
-        val todayStart = now.withHour(0).withMinute(0).withSecond(0).withNano(0)
-        val todayEnd = now.withHour(23).withMinute(59).withSecond(59).withNano(999999999)
-
-        return feedbackRepository.countTodayFeedbacks(memberId, todayStart, todayEnd).toInt()
     }
 }

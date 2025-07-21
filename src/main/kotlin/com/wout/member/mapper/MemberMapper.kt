@@ -1,6 +1,6 @@
 package com.wout.member.mapper
 
-import com.wout.member.dto.response.MemberResponse
+import com.wout.member.dto.mypage.response.MemberResponse
 import com.wout.member.entity.Member
 import org.springframework.stereotype.Component
 

@@ -1,6 +1,7 @@
 package com.wout.member.entity
 
 import com.wout.common.entity.BaseTimeEntity
+import com.wout.member.dto.login.request.MemberCreateRequest
 import jakarta.persistence.*
 import org.hibernate.annotations.Comment
 
@@ -64,7 +65,7 @@ class Member private constructor(
         /**
          * MemberCreateRequest로부터 생성
          */
-        fun from(request: com.wout.member.dto.request.MemberCreateRequest): Member {
+        fun from(request: MemberCreateRequest): Member {
             require(request.deviceId.isNotBlank()) { "DeviceId는 필수값입니다" }
 
             // 위도/경도 유효성 검사
@@ -79,27 +80,6 @@ class Member private constructor(
             )
         }
 
-        /**
-         * 완전한 정보로 회원 생성 (테스트용)
-         */
-        fun createWithFullInfo(
-            deviceId: String,
-            nickname: String? = null,
-            latitude: Double? = null,
-            longitude: Double? = null,
-            cityName: String? = null
-        ): Member {
-            require(deviceId.isNotBlank()) { "DeviceId는 필수값입니다" }
-            validateLocation(latitude, longitude)
-
-            return Member(
-                deviceId = deviceId,
-                nickname = nickname,
-                defaultLatitude = latitude,
-                defaultLongitude = longitude,
-                defaultCityName = cityName
-            )
-        }
 
         /**
          * 위치 정보 유효성 검증

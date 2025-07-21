@@ -1,494 +1,278 @@
 package com.wout.member.entity
 
 import com.wout.common.entity.BaseTimeEntity
+import com.wout.member.entity.enums.ReactionLevel
 import jakarta.persistence.*
 import org.hibernate.annotations.Comment
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 /**
  * packageName    : com.wout.member.entity
  * fileName       : WeatherPreference
  * author         : MinKyu Park
  * date           : 2025-06-01
- * description    : 사용자 날씨 선호도 및 민감도 설정 엔티티 (언더바 제거, QueryDSL 최적화)
+ * description    : 사용자 날씨 선호도 및 민감도 설정 엔티티 (더티체킹 패턴 적용)
  * ===========================================================
  * DATE              AUTHOR             NOTE
  * -----------------------------------------------------------
- * 2025-05-27        MinKyu Park       최초 생성
- * 2025-06-01        MinKyu Park       개발 가이드에 맞게 수정 (update 메서드 추가)
- * 2025-06-03        MinKyu Park       언더바 제거, 불변성 강화, QueryDSL 친화적으로 개선
+ * 2025-06-01        MinKyu Park       최초 생성
+ * 2025-06-08        MinKyu Park       더티체킹 패턴으로 변경 (2단계)
  */
 @Entity
 class WeatherPreference private constructor(
+    /* ---------- PK / FK ---------- */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Comment("날씨 선호도 설정 고유 ID")
     val id: Long = 0L,
 
-    @Column(name = "member_id", nullable = false, unique = true)
     @Comment("회원 ID (FK)")
+    @Column(name = "member_id", nullable = false, unique = true)
     val memberId: Long,
 
-    // === 1단계: 우선순위 (괴로운 날씨 2개 선택) ===
-    @Column(name = "priority_first", length = 20)
-    @Comment("1순위 괴로운 날씨 (heat/cold/humidity/wind/uv/pollution)")
-    val priorityFirst: String? = null,
+    /* ---------- Step-1 : 요소별 민감도 ---------- */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reaction_cold", length = 10, nullable = false)
+    var reactionCold: ReactionLevel,
 
-    @Column(name = "priority_second", length = 20)
-    @Comment("2순위 괴로운 날씨 (heat/cold/humidity/wind/uv/pollution)")
-    val prioritySecond: String? = null,
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reaction_heat", length = 10, nullable = false)
+    var reactionHeat: ReactionLevel,
 
-    // === 2단계: 체감온도 기준점 ===
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reaction_humidity", length = 10, nullable = false)
+    var reactionHumidity: ReactionLevel,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reaction_uv", length = 10, nullable = false)
+    var reactionUv: ReactionLevel,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reaction_air", length = 10, nullable = false)
+    var reactionAir: ReactionLevel,
+
+    /* ---------- Step-2 : 체감 온도 기준 ---------- */
+    @Comment("긴팔을 입기 시작하는 온도 (10–30℃)")
     @Column(name = "comfort_temperature", nullable = false)
-    @Comment("긴팔을 입기 시작하는 온도 (10-30도)")
-    val comfortTemperature: Int = 20,
+    var comfortTemperature: Int = 20,
 
-    // === 3단계: 피부 반응 (자외선+기온 민감도 추정) ===
-    @Column(name = "skin_reaction", length = 10)
-    @Comment("여름 외출 후 피부 반응 (high/medium/low)")
-    val skinReaction: String? = null,
+    /* ---------- Step-3 : 요소별 중요도(비중) ---------- */
+    @Column(name = "importance_cold", nullable = false)
+    var importanceCold: Double = 0.20,
 
-    // === 4단계: 습도 민감도 ===
-    @Column(name = "humidity_reaction", length = 10)
-    @Comment("습한 날씨 불편함 정도 (high/medium/low)")
-    val humidityReaction: String? = null,
+    @Column(name = "importance_heat", nullable = false)
+    var importanceHeat: Double = 0.20,
 
-    // === 5단계: 세부 조정 (각 요소별 영향도) ===
-    @Column(name = "temperature_weight", nullable = false)
-    @Comment("기온 영향도 가중치 (1-100)")
-    val temperatureWeight: Int = 50,
+    @Column(name = "importance_humidity", nullable = false)
+    var importanceHumidity: Double = 0.20,
 
-    @Column(name = "humidity_weight", nullable = false)
-    @Comment("습도 영향도 가중치 (1-100)")
-    val humidityWeight: Int = 50,
+    @Column(name = "importance_uv", nullable = false)
+    var importanceUv: Double = 0.20,
 
-    @Column(name = "wind_weight", nullable = false)
-    @Comment("바람 영향도 가중치 (1-100)")
-    val windWeight: Int = 50,
+    @Column(name = "importance_air", nullable = false)
+    var importanceAir: Double = 0.20,
 
-    @Column(name = "uv_weight", nullable = false)
-    @Comment("자외선 영향도 가중치 (1-100)")
-    val uvWeight: Int = 50,
-
-    @Column(name = "air_quality_weight", nullable = false)
-    @Comment("대기질 영향도 가중치 (1-100)")
-    val airQualityWeight: Int = 50,
-
-    // === 계산된 개인 보정값들 ===
+    /* ---------- 파생값 ---------- */
     @Column(name = "personal_temp_correction", nullable = false)
-    @Comment("개인 온도 보정값 (comfort_temperature 기반 계산)")
-    val personalTempCorrection: Double = 0.0,
-
-    @Column(name = "is_setup_completed", nullable = false)
-    @Comment("5단계 설정 완료 여부")
-    val isSetupCompleted: Boolean = false
+    var personalTempCorrection: Double = 0.0
 ) : BaseTimeEntity() {
 
-    protected constructor() : this(memberId = 0L)
-
+    /* ===== Companion : 유틸 & 팩토리 ===== */
     companion object {
+        private const val MIN_TEMP = 10
+        private const val MAX_TEMP = 30
+        private const val EPS = 0.02    // importance 합계 허용 오차(±2 %)
+
         /**
-         * 5단계 질문 완료 후 생성
+         * 온보딩 완료 시 **정적 팩토리** — 필수 파라미터 검증 후 객체 생성
          */
         fun createFromSetup(
             memberId: Long,
-            priorityFirst: String?,
-            prioritySecond: String?,
+            rxCold: ReactionLevel, rxHeat: ReactionLevel,
+            rxHumidity: ReactionLevel, rxUv: ReactionLevel, rxAir: ReactionLevel,
             comfortTemperature: Int,
-            skinReaction: String?,
-            humidityReaction: String?,
-            temperatureWeight: Int = 50,
-            humidityWeight: Int = 50,
-            windWeight: Int = 50,
-            uvWeight: Int = 50,
-            airQualityWeight: Int = 50
+            impCold: Double, impHeat: Double,
+            impHumidity: Double, impUv: Double, impAir: Double
         ): WeatherPreference {
-            require(memberId > 0) { "Member ID는 양수여야 합니다" }
-            require(comfortTemperature in 10..30) { "쾌적 온도는 10-30도 사이여야 합니다" }
+            require(memberId > 0) { "Member ID는 양수여야 합니다." }
+            validateComfortTemperature(comfortTemperature)
 
-            // 가중치 유효성 검증
-            validateWeight(temperatureWeight, "온도")
-            validateWeight(humidityWeight, "습도")
-            validateWeight(windWeight, "바람")
-            validateWeight(uvWeight, "자외선")
-            validateWeight(airQualityWeight, "대기질")
-
-            // 개인 온도 보정값 계산: (사용자 긴팔온도 - 20) × 0.5
-            val personalCorrection = (comfortTemperature - 20) * 0.5
+            val balanced = balanceImportance(impCold, impHeat, impHumidity, impUv, impAir)
+            val tempCorr = (comfortTemperature - 20) * 0.5   // 개인 온도 보정
 
             return WeatherPreference(
                 memberId = memberId,
-                priorityFirst = priorityFirst,
-                prioritySecond = prioritySecond,
+                reactionCold = rxCold, reactionHeat = rxHeat,
+                reactionHumidity = rxHumidity, reactionUv = rxUv, reactionAir = rxAir,
                 comfortTemperature = comfortTemperature,
-                skinReaction = skinReaction,
-                humidityReaction = humidityReaction,
-                temperatureWeight = temperatureWeight,
-                humidityWeight = humidityWeight,
-                windWeight = windWeight,
-                uvWeight = uvWeight,
-                airQualityWeight = airQualityWeight,
-                personalTempCorrection = personalCorrection,
-                isSetupCompleted = true
+                importanceCold = balanced[0], importanceHeat = balanced[1],
+                importanceHumidity = balanced[2], importanceUv = balanced[3],
+                importanceAir = balanced[4],
+                personalTempCorrection = tempCorr
             )
         }
 
-        /**
-         * WeatherPreferenceSetupRequest로부터 생성
-         */
-        fun from(memberId: Long, request: com.wout.member.dto.request.WeatherPreferenceSetupRequest): WeatherPreference {
-            return createFromSetup(
-                memberId = memberId,
-                priorityFirst = request.priorityFirst,
-                prioritySecond = request.prioritySecond,
-                comfortTemperature = request.comfortTemperature,
-                skinReaction = request.skinReaction,
-                humidityReaction = request.humidityReaction,
-                temperatureWeight = request.temperatureWeight,
-                humidityWeight = request.humidityWeight,
-                windWeight = request.windWeight,
-                uvWeight = request.uvWeight,
-                airQualityWeight = request.airQualityWeight
-            )
-        }
+        /** 쾌적 온도 범위(10~30℃) 검증 */
+        private fun validateComfortTemperature(v: Int) =
+            require(v in MIN_TEMP..MAX_TEMP) {
+                "쾌적 온도는 $MIN_TEMP~$MAX_TEMP℃ 사이여야 합니다."
+            }
 
-        /**
-         * 가중치 유효성 검증
-         */
-        private fun validateWeight(weight: Int, name: String) {
-            require(weight in 1..100) { "${name} 가중치는 1-100 사이여야 합니다" }
+        /** 중요도 5값을 합계 1.0 ±2 % 로 자동 보정 */
+        private fun balanceImportance(
+            cold: Double, heat: Double, humi: Double, uv: Double, air: Double
+        ): List<Double> {
+            val list = mutableListOf(cold, heat, humi, uv, air)
+            val diff = 1.0 - list.sum()
+            if (kotlin.math.abs(diff) <= EPS) {
+                list[list.lastIndex] = (list.last() + diff).coerceIn(0.0, 1.0)
+            } else {
+                throw IllegalArgumentException("importance 합계가 1.0에서 너무 벗어났습니다.")
+            }
+            return list
         }
     }
 
-    // ===== 도메인 로직 (상태 변경) =====
-
     /**
-     * 부분 업데이트 (5단계 설정 완료 후)
+     *    사용자 설정을 부분 수정할 때 호출.
+     *    null 파라미터는 기존 값을 유지하고, importance 값이 한 개라도 바뀌면
+     *    다시 balanceImportance() 로 보정합니다.
      */
-    fun update(
+    fun updatePreferences(
+        rxCold: ReactionLevel? = null, rxHeat: ReactionLevel? = null,
+        rxHumidity: ReactionLevel? = null, rxUv: ReactionLevel? = null, rxAir: ReactionLevel? = null,
         comfortTemperature: Int? = null,
-        temperatureWeight: Int? = null,
-        humidityWeight: Int? = null,
-        windWeight: Int? = null,
-        uvWeight: Int? = null,
-        airQualityWeight: Int? = null
-    ): WeatherPreference {
-        val newComfortTemp = comfortTemperature ?: this.comfortTemperature
-        val newTempWeight = temperatureWeight ?: this.temperatureWeight
-        val newHumidityWeight = humidityWeight ?: this.humidityWeight
-        val newWindWeight = windWeight ?: this.windWeight
-        val newUvWeight = uvWeight ?: this.uvWeight
-        val newAirQualityWeight = airQualityWeight ?: this.airQualityWeight
+        impCold: Double? = null, impHeat: Double? = null,
+        impHumidity: Double? = null, impUv: Double? = null, impAir: Double? = null
+    ) {
+        /* ① 민감도(Reaction) */
+        rxCold?.let { reactionCold = it }
+        rxHeat?.let { reactionHeat = it }
+        rxHumidity?.let { reactionHumidity = it }
+        rxUv?.let { reactionUv = it }
+        rxAir?.let { reactionAir = it }
 
-        // 유효성 검증
-        if (comfortTemperature != null) {
-            require(newComfortTemp in 10..30) { "쾌적 온도는 10-30도 사이여야 합니다" }
+        /* ② 체감 온도 기준 */
+        comfortTemperature?.let {
+            validateComfortTemperature(it)
+            this.comfortTemperature = it
+            personalTempCorrection = (it - 20) * 0.5
         }
 
-        validateWeight(newTempWeight, "온도")
-        validateWeight(newHumidityWeight, "습도")
-        validateWeight(newWindWeight, "바람")
-        validateWeight(newUvWeight, "자외선")
-        validateWeight(newAirQualityWeight, "대기질")
-
-        // 개인 온도 보정값 재계산
-        val newPersonalCorrection = (newComfortTemp - 20) * 0.5
-
-        return copy(
-            comfortTemperature = newComfortTemp,
-            temperatureWeight = newTempWeight,
-            humidityWeight = newHumidityWeight,
-            windWeight = newWindWeight,
-            uvWeight = newUvWeight,
-            airQualityWeight = newAirQualityWeight,
-            personalTempCorrection = newPersonalCorrection
-        )
-    }
-
-    /**
-     * 우선순위 업데이트
-     */
-    fun updatePriorities(priorityFirst: String?, prioritySecond: String?): WeatherPreference {
-        validatePriority(priorityFirst, "1순위")
-        validatePriority(prioritySecond, "2순위")
-
-        if (priorityFirst != null && prioritySecond != null) {
-            require(priorityFirst != prioritySecond) { "1순위와 2순위는 달라야 합니다" }
-        }
-
-        return copy(
-            priorityFirst = priorityFirst,
-            prioritySecond = prioritySecond
-        )
-    }
-
-    /**
-     * 반응 정보 업데이트
-     */
-    fun updateReactions(skinReaction: String?, humidityReaction: String?): WeatherPreference {
-        validateReactionLevel(skinReaction, "피부 반응")
-        validateReactionLevel(humidityReaction, "습도 반응")
-
-        return copy(
-            skinReaction = skinReaction,
-            humidityReaction = humidityReaction
-        )
-    }
-
-    // ===== 질의 메서드 =====
-
-    /**
-     * 우선순위 항목들을 리스트로 반환
-     */
-    fun getPriorityList(): List<String> {
-        return listOfNotNull(priorityFirst, prioritySecond)
-    }
-
-    /**
-     * 특정 날씨 요소가 우선순위에 포함되어 있는지 확인
-     */
-    fun isPriorityElement(weatherElement: String): Boolean {
-        return weatherElement in getPriorityList()
-    }
-
-    /**
-     * 우선순위에 따른 패널티 가중치 반환
-     */
-    fun getPriorityPenaltyWeight(weatherElement: String): Double {
-        return when {
-            priorityFirst == weatherElement -> 0.3  // 1순위: 70% 감점
-            prioritySecond == weatherElement -> 0.5 // 2순위: 50% 감점
-            else -> 1.0 // 패널티 없음
+        /* ③ 중요도(Importance) */
+        if (listOf(impCold, impHeat, impHumidity, impUv, impAir).any { it != null }) {
+            val balanced = balanceImportance(
+                impCold ?: importanceCold,
+                impHeat ?: importanceHeat,
+                impHumidity ?: importanceHumidity,
+                impUv ?: importanceUv,
+                impAir ?: importanceAir
+            )
+            importanceCold = balanced[0]; importanceHeat = balanced[1]
+            importanceHumidity = balanced[2]; importanceUv = balanced[3]; importanceAir = balanced[4]
         }
     }
 
     /**
-     * 민감도가 높은 사용자인지 확인
+     * 중요도 맵(예: "cold" → 0.2) 반환
      */
-    fun isHighSensitivity(): Boolean {
-        val highSensitivityCount = listOf(
-            skinReaction == "high",
-            humidityReaction == "high",
-            temperatureWeight >= 80,
-            humidityWeight >= 80,
-            uvWeight >= 80
-        ).count { it }
-
-        return highSensitivityCount >= 3
-    }
+    fun importanceMap(): Map<String, Double> = mapOf(
+        "cold" to importanceCold,
+        "heat" to importanceHeat,
+        "humidity" to importanceHumidity,
+        "uv" to importanceUv,
+        "air" to importanceAir
+    )
 
     /**
-     * 추위를 많이 타는 타입인지 확인
-     */
-    fun isColdSensitive(): Boolean {
-        return comfortTemperature >= 22 || isPriorityElement("cold")
-    }
-
-    /**
-     * 더위를 많이 타는 타입인지 확인
-     */
-    fun isHeatSensitive(): Boolean {
-        return comfortTemperature <= 16 || isPriorityElement("heat")
-    }
-
-    // 🆕 아웃핏 추천을 위한 민감도 판단 메서드들
-
-    /**
-     * 습도에 민감한지 확인 (아웃핏 추천용)
-     */
-    fun isHumiditySensitive(): Boolean {
-        return isPriorityElement("humidity") || humidityReaction == "high" || humidityWeight >= 70
-    }
-
-    /**
-     * 바람에 민감한지 확인 (아웃핏 추천용)
-     */
-    fun isWindSensitive(): Boolean {
-        return isPriorityElement("wind") || windWeight >= 70
-    }
-
-    /**
-     * 자외선에 민감한지 확인 (아웃핏 추천용)
-     */
-    fun isUVSensitive(): Boolean {
-        return isPriorityElement("uv") || skinReaction == "high" || uvWeight >= 70
-    }
-
-    /**
-     * 대기질에 민감한지 확인 (아웃핏 추천용)
-     */
-    fun isAirQualitySensitive(): Boolean {
-        return isPriorityElement("pollution") || airQualityWeight >= 70
-    }
-
-    /**
-     * 사용자 타입 특성 요약 (아웃핏 추천 메시지용)
-     */
-    fun getPersonalityTraits(): List<String> {
-        val traits = mutableListOf<String>()
-
-        if (isColdSensitive()) traits.add("추위를 많이 타는 편")
-        if (isHeatSensitive()) traits.add("더위를 많이 타는 편")
-        if (isHumiditySensitive()) traits.add("습함을 특히 싫어하는 편")
-        if (isUVSensitive()) traits.add("자외선에 예민한 편")
-        if (isWindSensitive()) traits.add("바람을 싫어하는 편")
-        if (isAirQualitySensitive()) traits.add("미세먼지에 민감한 편")
-
-        return traits
-    }
-    
-    /**
-     * 온도 구간별 민감도 보정값 계산
-     * 개인 특성에 따라 온도 구간을 조정하여 더 정확한 카테고리 선택
-     */
-    fun getTemperatureAdjustment(actualTemp: Double): Double {
-        var adjustment = 0.0
-
-        // 추위 민감형: 체감온도를 더 낮게 느끼도록 조정
-        if (isColdSensitive()) {
-            adjustment -= when {
-                comfortTemperature >= 26 -> 3.0  // 매우 추위 많이 탐
-                comfortTemperature >= 24 -> 2.0  // 추위 많이 탐
-                else -> 1.0                       // 조금 추위 탐
-            }
-        }
-
-        // 더위 민감형: 체감온도를 더 높게 느끼도록 조정
-        if (isHeatSensitive()) {
-            adjustment += when {
-                comfortTemperature <= 14 -> 3.0  // 매우 더위 많이 탐
-                comfortTemperature <= 16 -> 2.0  // 더위 많이 탐
-                else -> 1.0                       // 조금 더위 탐
-            }
-        }
-
-        return adjustment
-    }
-
-    // ===== 날씨 계산 로직 (도메인 로직) =====
-
-    /**
-     * 개인별 체감온도 계산
+     * 체감 온도 계산<br>
+     * ① Wind-Chill or ② Heat-Index 공식 적용 후<br>
+     * ③ 사용자 보정치(personalTempCorrection) 와 습도 반응 보정 추가
      */
     fun calculateFeelsLikeTemperature(
-        actualTemp: Double,
-        windSpeed: Double,
-        humidity: Double
+        actual: Double, wind: Double, humidity: Double
     ): Double {
-        var feelsLikeTemp = actualTemp
-
-        // 1. Wind Chill 계산 (10°C 이하에서만 적용)
-        if (actualTemp <= 10.0 && windSpeed >= 1.34) {
-            feelsLikeTemp = 13.12 + 0.6215 * actualTemp -
-                    11.37 * windSpeed.pow(0.16) +
-                    0.3965 * actualTemp * windSpeed.pow(0.16)
+        var feels = actual
+        if (actual <= 10 && wind >= 1.34) { // ① 추위 체감
+            feels = 13.12 + 0.6215 * actual -
+                    11.37 * wind.pow(0.16) +
+                    0.3965 * actual * wind.pow(0.16)
+        } else if (actual >= 27 && humidity >= 40) { // ② 더위 체감
+            feels = calculateHeatIndex(actual, humidity)
         }
-        // 2. Heat Index 계산 (27°C 이상에서만 적용)
-        else if (actualTemp >= 27.0 && humidity >= 40.0) {
-            feelsLikeTemp = calculateHeatIndex(actualTemp, humidity)
-        }
-
-        // 3. 습도 보정 적용
-        val humidityCorrection = getHumidityCorrection(humidity)
-
-        // 4. 개인별 온도 보정 적용
-        return feelsLikeTemp + this.personalTempCorrection + humidityCorrection
+        return feels + personalTempCorrection + getHumidityCorrection(humidity) // ③ 개인 보정
     }
+
+    /* ---------- 내부 보조 메서드 ---------- */
+
+    /** Heat-Index(화씨)→섭씨 변환 */
+    private fun calculateHeatIndex(tc: Double, h: Double): Double {
+        val tf = tc * 9 / 5 + 32
+        val hi = -42.379 + 2.04901523 * tf + 10.14333127 * h -
+                0.22475541 * tf * h - 0.00683783 * tf * tf -
+                0.05481717 * h * h + 0.00122874 * tf * tf * h +
+                0.00085282 * tf * h * h - 0.00000199 * tf * tf * h * h
+        return (hi - 32) * 5 / 9
+    }
+
+    /** 습도 민감도에 따른 추가 보정치 */
+    private fun getHumidityCorrection(h: Double): Double {
+        val base = when {
+            h >= 85 -> 3.0
+            h >= 75 -> 2.0
+            h >= 65 -> 1.0
+            h >= 40 -> 0.0
+            h >= 30 -> -0.5
+            else    -> -1.0
+        }
+        val multiplier = when (reactionHumidity) {
+            ReactionLevel.HIGH   -> 1.5
+            ReactionLevel.LOW    -> 0.5
+            else                 -> 1.0
+        }
+        return base * multiplier
+    }
+
+    /* ==================== 민감도 헬퍼 ==================== */
+
+    /** 추위에 HIGH 민감 */
+    fun isColdSensitive() = reactionCold == ReactionLevel.HIGH
+
+    /** 더위에 HIGH 민감 */
+    fun isHeatSensitive() = reactionHeat == ReactionLevel.HIGH
+
+    /** 습도에 HIGH 민감 */
+    fun isHumiditySensitive() = reactionHumidity == ReactionLevel.HIGH
 
     /**
-     * 날씨 요소별 가중치 반환
+     * 다섯 요소 중 하나라도 HIGH가 있으면 ‘고민감’ 사용자로 간주
      */
-    fun getWeightFor(weatherElement: String): Int {
-        return when (weatherElement) {
-            "temperature" -> temperatureWeight
-            "humidity" -> humidityWeight
-            "wind" -> windWeight
-            "uv" -> uvWeight
-            "airQuality" -> airQualityWeight
-            else -> 50 // 기본값
-        }
+    fun isHighSensitivity(): Boolean =
+        listOf(reactionCold, reactionHeat, reactionHumidity, reactionUv, reactionAir)
+            .any { it == ReactionLevel.HIGH }
+
+    /* ==================== 가중치(%) 계산 ==================== */
+
+    /** UV 중요도(0~100 %) */
+    val uvWeightPercent: Int
+        get() = (importanceUv * 100).roundToInt()
+
+    /** 대기질 중요도(0~100 %) */
+    val airWeightPercent: Int
+        get() = (importanceAir * 100).roundToInt()
+
+    /* ==================== 계수 유틸 ==================== */
+
+    /**
+     * 민감도 레벨을 계수(1.5·1.0·0.5)로 변환
+     *  – HIGH → 1.5, MEDIUM → 1.0, LOW → 0.5
+     */
+    fun reactionCoefficient(level: ReactionLevel): Double = when (level) {
+        ReactionLevel.HIGH -> 1.5
+        ReactionLevel.LOW  -> 0.5
+        else               -> 1.0
     }
 
-    // ===== Private 헬퍼 메서드들 =====
 
-    private fun calculateHeatIndex(tempC: Double, humidity: Double): Double {
-        val tempF = tempC * 9.0 / 5.0 + 32.0
-        val heatIndexF = -42.379 + 2.04901523 * tempF + 10.14333127 * humidity -
-                0.22475541 * tempF * humidity - 0.00683783 * tempF * tempF -
-                0.05481717 * humidity * humidity + 0.00122874 * tempF * tempF * humidity +
-                0.00085282 * tempF * humidity * humidity - 0.00000199 * tempF * tempF * humidity * humidity
-        return (heatIndexF - 32.0) * 5.0 / 9.0
-    }
-
-    private fun getHumidityCorrection(humidity: Double): Double {
-        val baseCorrection = when {
-            humidity >= 85 -> 3.0
-            humidity >= 75 -> 2.0
-            humidity >= 65 -> 1.0
-            humidity >= 40 -> 0.0
-            humidity >= 30 -> -0.5
-            else -> -1.0
-        }
-
-        val sensitivityMultiplier = when (this.humidityReaction) {
-            "high" -> 1.5
-            "medium" -> 1.0
-            "low" -> 0.5
-            else -> 1.0
-        }
-
-        return baseCorrection * sensitivityMultiplier
-    }
-
-    private fun validatePriority(priority: String?, name: String) {
-        if (priority != null) {
-            val validPriorities = setOf("heat", "cold", "humidity", "wind", "uv", "pollution")
-            require(priority in validPriorities) { "유효하지 않은 $name 우선순위입니다: $priority" }
-        }
-    }
-
-    private fun validateReactionLevel(level: String?, name: String) {
-        if (level != null) {
-            val validLevels = setOf("high", "medium", "low")
-            require(level in validLevels) { "유효하지 않은 $name 레벨입니다: $level" }
-        }
-    }
-
-    private fun validateWeight(weight: Int, name: String) {
-        require(weight in 1..100) { "${name} 가중치는 1-100 사이여야 합니다" }
-    }
-
-    // ===== 불변성 보장을 위한 copy 메서드 =====
-
-    private fun copy(
-        priorityFirst: String? = this.priorityFirst,
-        prioritySecond: String? = this.prioritySecond,
-        comfortTemperature: Int = this.comfortTemperature,
-        skinReaction: String? = this.skinReaction,
-        humidityReaction: String? = this.humidityReaction,
-        temperatureWeight: Int = this.temperatureWeight,
-        humidityWeight: Int = this.humidityWeight,
-        windWeight: Int = this.windWeight,
-        uvWeight: Int = this.uvWeight,
-        airQualityWeight: Int = this.airQualityWeight,
-        personalTempCorrection: Double = this.personalTempCorrection,
-        isSetupCompleted: Boolean = this.isSetupCompleted
-    ): WeatherPreference {
-        return WeatherPreference(
-            id = this.id,
-            memberId = this.memberId,
-            priorityFirst = priorityFirst,
-            prioritySecond = prioritySecond,
-            comfortTemperature = comfortTemperature,
-            skinReaction = skinReaction,
-            humidityReaction = humidityReaction,
-            temperatureWeight = temperatureWeight,
-            humidityWeight = humidityWeight,
-            windWeight = windWeight,
-            uvWeight = uvWeight,
-            airQualityWeight = airQualityWeight,
-            personalTempCorrection = personalTempCorrection,
-            isSetupCompleted = isSetupCompleted
-        )
-    }
 }

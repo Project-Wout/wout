@@ -1,4 +1,4 @@
-package com.wout.member.dto.request
+package com.wout.member.dto.mypage.request
 
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size

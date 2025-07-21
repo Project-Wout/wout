@@ -8,6 +8,7 @@ import org.springframework.validation.BindException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.HandlerMethodValidationException
 
 /**
  * packageName    : com.wout.common.exception
@@ -54,6 +55,28 @@ class GlobalExceptionHandler {
             }
             else -> errorCode.message
         }
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ApiResponse.error(errorCode.code, errorMessage))
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException::class)
+    fun handleHandlerMethodValidationException(e: HandlerMethodValidationException): ResponseEntity<ApiResponse<Nothing>> {
+        log.error("핸들러 메서드 유효성 검사 예외 발생: {}", e.message, e)
+
+        val errorCode = ErrorCode.INVALID_INPUT_VALUE
+
+        // Spring 6.x의 ParameterValidationResult에서 에러 메시지 추출
+        val errorMessage = e.allValidationResults
+            .flatMap { result ->
+                result.resolvableErrors.map { error ->
+                    val parameterName = result.methodParameter.parameterName ?: "unknown"
+                    "$parameterName: ${error.defaultMessage}"
+                }
+            }
+            .joinToString(", ")
+            .ifEmpty { errorCode.message }
 
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)

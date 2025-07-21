@@ -1,9 +1,9 @@
 package com.wout.outfit.util
 
 import com.wout.member.entity.WeatherPreference
-import com.wout.member.util.WeatherGrade
+import com.wout.member.model.WeatherGrade
+import com.wout.member.model.WeatherScore
 import com.wout.member.util.WeatherScoreCalculator
-import com.wout.member.util.WeatherScoreResult
 import com.wout.outfit.entity.OutfitRecommendation
 import com.wout.outfit.entity.enums.BottomCategory
 import com.wout.outfit.entity.enums.OuterCategory
@@ -58,51 +58,54 @@ class OutfitRecommendationEngine(
         val bottomCategory = determineBottomCategory(personalFeelsLike, preferences)
         val outerCategory = determineOuterCategory(personalFeelsLike, weatherData, preferences)
 
-        // 직접 메서드 호출 (Reflection 제거)
-        val topRecommendations = outfitItemDatabase.getTopItemsForWeather(
-            topCategory, weatherCondition, preferences, personalFeelsLike
+        // ── 1) 상의 ───────────────────────────────────────────────
+        val topRecommendations = outfitItemDatabase.getTopItems(
+            category = topCategory,
+            preferences = preferences
         )
 
-        val bottomRecommendations = outfitItemDatabase.getBottomItemsForWeather(
-            bottomCategory, weatherCondition, preferences, personalFeelsLike
+        // ── 2) 하의 ───────────────────────────────────────────────
+        val bottomRecommendations = outfitItemDatabase.getBottomItems(
+            category = bottomCategory,
+            temperature = personalFeelsLike,   // ← 체감온도
+            preferences = preferences
         )
 
-        val outerRecommendations = if (outerCategory != null) {
-            outfitItemDatabase.getOuterItemsForWeather(
-                outerCategory, weatherCondition, weatherData, preferences, personalFeelsLike
+        // ── 3) 외투 (nullable) ───────────────────────────────────
+        val outerRecommendations = outerCategory?.let {
+            outfitItemDatabase.getOuterItems(
+                category = it,
+                temperature = personalFeelsLike
             )
-        } else {
-            emptyList()
-        }
+        } ?: emptyList()
 
-        val accessoryRecommendations = outfitItemDatabase.getAccessoryItemsForWeather(
-            weatherCondition, weatherData, preferences, personalFeelsLike
+        // ── 4) 액세서리 ───────────────────────────────────────────
+        val accessoryRecommendations = outfitItemDatabase.recommendAccessories(
+            condition = weatherCondition,
+            weatherData = weatherData,
+            preferences = preferences
         )
 
-        val personalizedMessage = generatePersonalizedMessage(
-            weatherCondition, personalFeelsLike, preferences, weatherData
-        )
 
         // 기존 WeatherScoreCalculator 사용
-        val scoreResult = weatherScoreCalculator.calculateTotalScore(
+        val weatherScore = weatherScoreCalculator.calculateTotalScore(
             temperature = weatherData.temperature,
             humidity = weatherData.humidity.toDouble(),
-            windSpeed = weatherData.windSpeed,
             uvIndex = weatherData.uvIndex ?: 0.0,
             pm25 = weatherData.pm25 ?: 0.0,
             pm10 = weatherData.pm10 ?: 0.0,
-            weatherPreference = preferences
+            preference = preferences
         )
 
         // 기존 로직 기반 개인 맞춤 팁 생성
-        val personalTip = generatePersonalTipFromScore(scoreResult, weatherCondition, preferences)
+        val personalTip = generatePersonalTipFromScore(weatherScore, preferences)
 
         return OutfitRecommendation.create(
             memberId = memberId,
             weatherDataId = weatherData.id!!,
             temperature = weatherData.temperature,
             feelsLikeTemperature = personalFeelsLike,
-            weatherScore = scoreResult.totalScore.toInt(),
+            weatherScore = weatherScore.total.toInt(),
             topCategory = topCategory,
             topItems = topRecommendations,
             bottomCategory = bottomCategory,
@@ -110,7 +113,7 @@ class OutfitRecommendationEngine(
             outerCategory = outerCategory,
             outerItems = outerRecommendations,
             accessoryItems = accessoryRecommendations,
-            recommendationReason = personalizedMessage,
+            recommendationReason = personalTip,
             personalTip = personalTip
         )
     }
@@ -309,57 +312,38 @@ class OutfitRecommendationEngine(
     // ===== 개인 맞춤 팁 생성 (기존 점수 기반) =====
 
     /**
-     * 기존 WeatherScoreResult 기반 개인 맞춤 팁 생성
+     * WeatherScore 기반 개인 맞춤 팁 생성
      */
     private fun generatePersonalTipFromScore(
-        scoreResult: WeatherScoreResult,
-        weatherCondition: WeatherCondition,
+        weatherScore: WeatherScore,
         preferences: WeatherPreference
-    ): String? {
+    ): String {
+
         val tips = mutableListOf<String>()
 
-        // 점수 등급별 기본 팁
-        when (scoreResult.grade) {
-            WeatherGrade.TERRIBLE -> {
-                tips.add("오늘은 외출을 최소화하는 것이 좋겠어요")
-            }
-
-            WeatherGrade.POOR -> {
-                tips.add("외출 시 충분한 준비를 하고 나가세요")
-            }
-
-            WeatherGrade.FAIR -> {
-                tips.add("적당한 날씨지만 개인 특성에 맞게 준비하세요")
-            }
-
-            WeatherGrade.GOOD -> {
-                tips.add("좋은 날씨네요! 편안하게 외출하실 수 있어요")
-            }
-
-            WeatherGrade.PERFECT -> {
-                tips.add("완벽한 날씨입니다! 원하는 활동을 마음껏 즐기세요")
-            }
+        /* ─── 1. 등급별 기본 팁 ─── */
+        tips += when (weatherScore.grade) {
+            WeatherGrade.TERRIBLE -> "🚫 오늘은 날씨가 좋지 않아요. 실내 활동 위주로 쉬어가시는 게 어떨까요?"
+            WeatherGrade.POOR -> "⚠️ 다소 불편한 날씨예요. 외출하실 땐 준비를 꼼꼼히 해주세요!"
+            WeatherGrade.FAIR -> "🙂 무난한 날씨예요. 가벼운 준비만 해도 충분합니다."
+            WeatherGrade.GOOD -> "😄 쾌적한 날씨네요! 편안하게 외출을 즐겨보세요."
+            WeatherGrade.PERFECT -> "🌟 완벽한 날씨입니다! 원하는 활동을 마음껏 즐겨보셔도 좋아요."
         }
 
-        // 개인 특성별 추가 팁
-        val personalTraits = preferences.getPersonalityTraits()
-        if (personalTraits.isNotEmpty()) {
-            val primaryTrait = personalTraits.first()
-            when {
-                primaryTrait.contains("추위") && scoreResult.elementScores.temperature < 70 -> {
-                    tips.add("평소 추위를 많이 타시니 보온에 신경쓰세요")
-                }
-
-                primaryTrait.contains("더위") && scoreResult.elementScores.temperature < 70 -> {
-                    tips.add("더위를 많이 타시는 편이니 시원함을 유지하세요")
-                }
-
-                primaryTrait.contains("습함") && scoreResult.elementScores.humidity < 70 -> {
-                    tips.add("습도에 민감하시니 통풍이 잘 되는 옷을 선택하세요")
-                }
-            }
+        /* ─── 2. 민감도 기반 추가 팁 ─── */
+        if (preferences.isColdSensitive() && weatherScore.elements.cold < 70) {
+            tips += "🥶 추위를 많이 타시는 편이에요. 보온에 신경 써서 레이어드해 보세요!"
+        }
+        if (preferences.isHeatSensitive() && weatherScore.elements.heat < 70) {
+            tips += "🔥 더위를 잘 느끼시는 편이에요. 통풍 잘 되는 시원한 소재를 추천해요!"
+        }
+        if (preferences.isHumiditySensitive() && weatherScore.elements.humidity < 70) {
+            tips += "💧 습도에 민감하시군요. 통풍 좋은 옷감으로 쾌적함을 유지해 보세요!"
         }
 
-        return tips.firstOrNull()
+        /* ✨ 반드시 String 을 돌려주도록 기본 문구 제공 */
+        return tips.firstOrNull() ?: "🙂 오늘 날씨에 맞춰 편안한 차림으로 다녀오세요!"
+
     }
+
 }

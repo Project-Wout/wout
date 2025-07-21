@@ -1,4 +1,4 @@
-package com.wout.member.dto.request
+package com.wout.member.dto.mypage.request
 
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin

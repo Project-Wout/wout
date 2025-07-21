@@ -1,5 +1,6 @@
-package com.wout.member.dto.response
+package com.wout.member.dto.mypage.response
 
+import com.wout.member.entity.enums.ReactionLevel
 import java.time.LocalDateTime
 
 /**
@@ -17,28 +18,27 @@ data class WeatherPreferenceResponse(
     val id: Long,
     val memberId: Long,
 
-    // 우선순위 정보
-    val priorityFirst: String?,
-    val prioritySecond: String?,
-    val priorities: List<String>, // 우선순위 리스트로 가공
+    // ===== ① 민감도(ReactionLevel) =====
+    val reactionCold: ReactionLevel,
+    val reactionHeat: ReactionLevel,
+    val reactionHumidity: ReactionLevel,
+    val reactionUv: ReactionLevel,
+    val reactionAir: ReactionLevel,
 
-    // 기본 설정
+    // ===== ② 체감 기준 온도 =====
     val comfortTemperature: Int,
-    val skinReaction: String?,
-    val humidityReaction: String?,
 
-    // 가중치 설정
-    val temperatureWeight: Int,
-    val humidityWeight: Int,
-    val windWeight: Int,
-    val uvWeight: Int,
-    val airQualityWeight: Int,
+    // ===== ③ 요소별 중요도(비중) (1-100) =====
+    val importanceCold: Int,
+    val importanceHeat: Int,
+    val importanceHumidity: Int,
+    val importanceUv: Int,
+    val importanceAir: Int,
 
-    // 계산된 값
+    // ===== 파생값 =====
     val personalTempCorrection: Double,
 
-    // 상태
-    val isSetupCompleted: Boolean,
+    // ===== 메타 =====
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime
 )
