@@ -1,6 +1,7 @@
 package com.wout.outfit.util
 
 import com.wout.member.entity.WeatherPreference
+import com.wout.member.model.WeatherConditions
 import com.wout.member.model.WeatherGrade
 import com.wout.member.model.WeatherScore
 import com.wout.member.util.WeatherScoreCalculator
@@ -88,14 +89,7 @@ class OutfitRecommendationEngine(
 
 
         // 기존 WeatherScoreCalculator 사용
-        val weatherScore = weatherScoreCalculator.calculateTotalScore(
-            temperature = weatherData.temperature,
-            humidity = weatherData.humidity.toDouble(),
-            uvIndex = weatherData.uvIndex ?: 0.0,
-            pm25 = weatherData.pm25 ?: 0.0,
-            pm10 = weatherData.pm10 ?: 0.0,
-            preference = preferences
-        )
+        val weatherScore = weatherScoreCalculator.calculateTotalScore(WeatherConditions.from(weatherData), preferences)
 
         // 기존 로직 기반 개인 맞춤 팁 생성
         val personalTip = generatePersonalTipFromScore(weatherScore, preferences)

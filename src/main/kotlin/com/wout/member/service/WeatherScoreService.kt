@@ -8,6 +8,7 @@ import com.wout.member.dto.weather.response.WeatherInfo
 import com.wout.member.dto.weather.response.WeatherScoreResponse
 import com.wout.member.entity.Member
 import com.wout.member.entity.WeatherPreference
+import com.wout.member.model.WeatherConditions
 import com.wout.member.model.WeatherScore
 import com.wout.member.repository.MemberRepository
 import com.wout.member.repository.WeatherPreferenceRepository
@@ -132,14 +133,7 @@ class WeatherScoreService(
         weatherPreference: WeatherPreference
     ): WeatherScore {
         return try {
-            weatherScoreCalculator.calculateTotalScore(
-                temperature = weatherData.temperature,
-                humidity = weatherData.humidity.toDouble(),
-                uvIndex = weatherData.uvIndex ?: 0.0,
-                pm25 = weatherData.pm25 ?: 0.0,
-                pm10 = weatherData.pm10 ?: 0.0,
-                preference = weatherPreference
-            )
+            weatherScoreCalculator.calculateTotalScore(WeatherConditions.from(weatherData), weatherPreference)
         } catch (_: Exception) {
             throw ApiException(INTERNAL_SERVER_ERROR)
         }

@@ -14,6 +14,7 @@ import com.wout.member.entity.Member
 import com.wout.member.entity.WeatherPreference
 import com.wout.member.repository.MemberRepository
 import com.wout.member.repository.WeatherPreferenceRepository
+import com.wout.member.model.WeatherConditions
 import com.wout.member.util.WeatherScoreCalculator
 import com.wout.weather.entity.WeatherData
 import com.wout.weather.repository.WeatherDataRepository
@@ -151,14 +152,7 @@ class FeedbackService(
     ): Feedback {
         val feels = pref.calculateFeelsLikeTemperature(data.temperature, data.windSpeed, data.humidity.toDouble())
 
-        val scoreTotal = weatherScoreCalculator.calculateTotalScore(
-            data.temperature,
-            data.humidity.toDouble(),
-            data.uvIndex ?: 0.0,
-            data.pm25 ?: 0.0,
-            data.pm10 ?: 0.0,
-            pref
-        ).total.toInt()
+        val scoreTotal = weatherScoreCalculator.calculateTotalScore(WeatherConditions.from(data), pref).total.toInt()
 
         return Feedback.create(
             memberId             = member.id,
