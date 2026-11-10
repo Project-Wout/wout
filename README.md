@@ -40,3 +40,24 @@
     - 너무 추웠어요 / 딱 맞았어요 / 너무 더웠어요 → 자동 반영
 
 --- 
+
+## 실행하기
+
+JDK 21이 필요합니다.
+
+1. OpenWeather API 키를 넣습니다. 둘 중 하나면 됩니다.
+    - `src/main/resources/application-secret.yml.example`을 같은 폴더에 `application-secret.yml`로 복사하고 키를 채웁니다. 이 파일은 gitignore 대상입니다.
+    - 환경 변수 `OPENWEATHER_API_KEY`에 키를 넣습니다.
+
+2. 서버를 띄웁니다.
+    ```bash
+    ./gradlew bootRun
+    ```
+
+3. 포트 8888에서 열립니다.
+    - Swagger: `http://localhost:8888/swagger-ui.html`
+    - H2 콘솔: `http://localhost:8888/h2-console` (JDBC URL `jdbc:h2:file:./data/wout`, 사용자 `sa`, 비밀번호 없음)
+
+DB 파일은 `data/` 아래에 생기고 gitignore 대상이라 재시작해도 데이터가 남습니다.
+
+날씨 수집은 기동 30초 뒤에 시작하고 끝나기까지 약 70초 걸립니다. 그동안 날씨 API와 점수 API는 404를 돌려줍니다.

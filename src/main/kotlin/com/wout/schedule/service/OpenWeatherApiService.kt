@@ -26,13 +26,11 @@ import org.springframework.transaction.annotation.Transactional
 @Transactional
 class OpenWeatherApiService(
     private val openWeatherClient: OpenWeatherClient,
-    private val weatherApiMapper: WeatherApiMapper
+    private val weatherApiMapper: WeatherApiMapper,
+    @Value("\${openweather.api.key}") private val apiKey: String
 ) {
 
     private val log = LoggerFactory.getLogger(OpenWeatherApiService::class.java)
-
-    @Value("\${openweather.api.key}")
-    private lateinit var apiKey: String
 
     /**
      * 외부 API 호출을 통한 날씨 데이터 수집

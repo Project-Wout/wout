@@ -4,6 +4,10 @@ server:
 app:
   timezone: Asia/Seoul  # 기본값, 필요시 변경 가능
 
+openweather:
+  api:
+    base-url: https://api.openweathermap.org/data/2.5
+
 spring:
   profiles:
     include: secret
