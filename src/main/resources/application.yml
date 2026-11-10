@@ -4,11 +4,15 @@ server:
 app:
   timezone: Asia/Seoul  # 기본값, 필요시 변경 가능
 
+openweather:
+  api:
+    base-url: https://api.openweathermap.org/data/2.5
+
 spring:
   profiles:
     include: secret
   datasource:
-    url: jdbc:h2:mem:testdb
+    url: jdbc:h2:file:./data/wout
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
@@ -18,7 +22,7 @@ spring:
       path: /h2-console
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
