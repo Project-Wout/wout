@@ -94,13 +94,7 @@ class WeatherScoreCalculator {
 
         /* ⑥ 총점 & Grade */
         val total = final.values.sum().coerceIn(0.0, 100.0)
-        val grade = when (total) {
-            in 90.0..100.0 -> WeatherGrade.PERFECT
-            in 75.0..89.99 -> WeatherGrade.GOOD
-            in 60.0..74.99 -> WeatherGrade.FAIR
-            in 45.0..59.99 -> WeatherGrade.POOR
-            else           -> WeatherGrade.TERRIBLE
-        }
+        val grade = WeatherGrade.fromScore(total)
 
         /* ⑦ DTO 반환 */
         val elemDto = ElementScores(
