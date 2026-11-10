@@ -59,7 +59,7 @@ class WeatherMessage {
      * 1. 점수 및 성향 기반 한 줄 메시지 (개인화 강화)
      */
     fun generatePersonalizedMessage(score: WeatherScore, preference: WeatherPreference): String {
-        val personality = getPersonalityType(preference)
+        val personality = getPersonalityType(score, preference)
         val bucket = score.grade
 
         return when (personality) {
@@ -94,12 +94,19 @@ class WeatherMessage {
         }
     }
 
-    // 성향 판별 함수
-    private fun getPersonalityType(preference: WeatherPreference): String = when {
-        preference.isColdSensitive() -> "추위민감형"
-        preference.isHeatSensitive() -> "더위민감형"
-        preference.isHumiditySensitive() -> "습도민감형"
-        else -> "일반형"
+    // 날씨가 나쁜 날에는 그 원인이 사용자의 민감 요소일 때만 성향 문구를 쓴다. 비처럼 요소 밖 원인으로 낮아진 날은 일반 문구다.
+    private fun getPersonalityType(score: WeatherScore, preference: WeatherPreference): String {
+        val elements = score.elements
+        val lowest = minOf(elements.cold, elements.heat, elements.humidity, minOf(elements.uv, elements.airQuality))
+        val badDay = score.grade in setOf(FAIR, POOR, TERRIBLE)
+
+        return listOf(
+            Triple("추위민감형", preference.isColdSensitive(), elements.cold),
+            Triple("더위민감형", preference.isHeatSensitive(), elements.heat),
+            Triple("습도민감형", preference.isHumiditySensitive(), elements.humidity)
+        ).firstOrNull { (_, sensitive, element) ->
+            sensitive && (!badDay || (element == lowest && element < 100))
+        }?.first ?: "일반형"
     }
 
     /**
