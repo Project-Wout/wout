@@ -1,5 +1,9 @@
 package com.wout.infra.openweather.config
 
+import com.wout.common.exception.ApiException
+import com.wout.common.exception.ErrorCode
+import feign.codec.ErrorDecoder
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /**
@@ -16,36 +20,9 @@ import org.springframework.context.annotation.Configuration
 @Configuration
 class OpenWeatherClientConfig {
 
-//    /**
-//     * Feign 로깅 레벨 설정
-//     */
-//    @Bean
-//    fun feignLoggerLevel(): Logger.Level {
-//        return Logger.Level.FULL
-//    }
-//
-//    /**
-//     * Feign 에러 핸들링
-//     */
-//    @Bean
-//    fun errorDecoder(): ErrorDecoder {
-//        return OpenWeatherErrorDecoder()
-//    }
-//
-//    /**
-//     * OpenWeather API 에러 디코더
-//     */
-//    class OpenWeatherErrorDecoder : ErrorDecoder {
-//        override fun decode(methodKey: String, response: Response): Exception {
-//            val status = response.status()
-//            val reason = response.reason() ?: "Unknown error"
-//
-//            return when (status) {
-//                401 -> ApiException(ErrorCode.WEATHER_API_ERROR, "날씨 API 인증 실패: 유효하지 않은 API 키")
-//                404 -> ApiException(ErrorCode.WEATHER_DATA_NOT_FOUND, "날씨 데이터를 찾을 수 없습니다.")
-//                429 -> ApiException(ErrorCode.WEATHER_API_ERROR, "날씨 API 호출 횟수 초과")
-//                else -> ApiException(ErrorCode.WEATHER_API_ERROR, "날씨 API 호출 중 오류 발생: $status $reason")
-//            }
-//        }
-//    }
+    @Bean
+    fun errorDecoder(): ErrorDecoder = ErrorDecoder { methodKey, response ->
+        val body = response.body()?.asReader(Charsets.UTF_8)?.use { it.readText() }?.trim() ?: ""
+        ApiException(ErrorCode.WEATHER_API_ERROR, "OpenWeather ${response.status()} $methodKey: $body")
+    }
 }
