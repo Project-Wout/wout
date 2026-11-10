@@ -2,9 +2,9 @@ package com.wout.member.entity
 
 import com.wout.common.entity.BaseTimeEntity
 import com.wout.member.entity.enums.ReactionLevel
+import com.wout.member.util.FeelsLikeTemperature
 import jakarta.persistence.*
 import org.hibernate.annotations.Comment
-import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
@@ -186,53 +186,11 @@ class WeatherPreference private constructor(
     )
 
     /**
-     * 체감 온도 계산<br>
-     * ① Wind-Chill or ② Heat-Index 공식 적용 후<br>
-     * ③ 사용자 보정치(personalTempCorrection) 와 습도 반응 보정 추가
+     * 개인 체감온도. 쾌적온도가 높은 사람(추위를 타는 사람)일수록 더 춥게 느끼므로 보정치를 뺀다.
      */
     fun calculateFeelsLikeTemperature(
         actual: Double, wind: Double, humidity: Double
-    ): Double {
-        var feels = actual
-        if (actual <= 10 && wind >= 1.34) { // ① 추위 체감
-            feels = 13.12 + 0.6215 * actual -
-                    11.37 * wind.pow(0.16) +
-                    0.3965 * actual * wind.pow(0.16)
-        } else if (actual >= 27 && humidity >= 40) { // ② 더위 체감
-            feels = calculateHeatIndex(actual, humidity)
-        }
-        return feels + personalTempCorrection + getHumidityCorrection(humidity) // ③ 개인 보정
-    }
-
-    /* ---------- 내부 보조 메서드 ---------- */
-
-    /** Heat-Index(화씨)→섭씨 변환 */
-    private fun calculateHeatIndex(tc: Double, h: Double): Double {
-        val tf = tc * 9 / 5 + 32
-        val hi = -42.379 + 2.04901523 * tf + 10.14333127 * h -
-                0.22475541 * tf * h - 0.00683783 * tf * tf -
-                0.05481717 * h * h + 0.00122874 * tf * tf * h +
-                0.00085282 * tf * h * h - 0.00000199 * tf * tf * h * h
-        return (hi - 32) * 5 / 9
-    }
-
-    /** 습도 민감도에 따른 추가 보정치 */
-    private fun getHumidityCorrection(h: Double): Double {
-        val base = when {
-            h >= 85 -> 3.0
-            h >= 75 -> 2.0
-            h >= 65 -> 1.0
-            h >= 40 -> 0.0
-            h >= 30 -> -0.5
-            else    -> -1.0
-        }
-        val multiplier = when (reactionHumidity) {
-            ReactionLevel.HIGH   -> 1.5
-            ReactionLevel.LOW    -> 0.5
-            else                 -> 1.0
-        }
-        return base * multiplier
-    }
+    ): Double = FeelsLikeTemperature.apparent(actual, wind, humidity) - personalTempCorrection
 
     /* ==================== 민감도 헬퍼 ==================== */
 
