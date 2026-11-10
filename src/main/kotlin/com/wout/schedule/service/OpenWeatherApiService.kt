@@ -49,7 +49,7 @@ class OpenWeatherApiService(
                 lang = "kr"
             )
 
-            log.info("📡 날씨 API 요청: $weatherRequest")
+            log.info("📡 날씨 API 요청: $cityName")
             val weatherResponse = openWeatherClient.getCurrentWeather(weatherRequest)
             log.info("✅ 날씨 API 응답 성공: ${weatherResponse.name}")
 
@@ -60,14 +60,20 @@ class OpenWeatherApiService(
                 appid = apiKey
             )
 
-            log.info("🌬️ 대기질 API 요청: $airRequest")
+            log.info("🌬️ 대기질 API 요청: $cityName")
             val airResponse = openWeatherClient.getAirPollution(airRequest)
             log.info("✅ 대기질 API 응답 성공: AQI=${airResponse.list.firstOrNull()?.main?.aqi}")
 
             // 3. UV Index 정보 API 호출
             log.info("☀️ UV Index API 요청: $cityName")
-            val uvResponse = openWeatherClient.getUVIndex(weatherRequest)
-            log.info("✅ UV Index API 응답 성공: UV=${uvResponse.value}")
+            val uvResponse = try {
+                val response = openWeatherClient.getUVIndex(weatherRequest)
+                log.info("✅ UV Index API 응답 성공: UV=${response.value}")
+                response
+            } catch (e: Exception) {
+                log.warn("⚠️ $cityName UV Index 조회 실패, 자외선 없이 진행: ${e.message}")
+                null
+            }
 
             // 4. API 응답을 WeatherData로 변환
             val weatherData = weatherApiMapper.toWeatherData(
